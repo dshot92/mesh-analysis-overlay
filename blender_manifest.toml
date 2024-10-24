@@ -10,7 +10,7 @@ maintainer = "Daniele Stochino <dshot92@gmail.com>"
 type = "add-on"
 
 # Optional link to documentation, support, source files, etc
-website = "https://github.com/dshot92/save-with-versioning"
+website = "https://github.com/dshot92/gpu-overlay-blender"
 
 # Optional list defined by Blender and server, see:
 # https://docs.blender.org/manual/en/dev/advanced/extensions/tags.html
@@ -25,7 +25,7 @@ blender_version_min = "4.2.0"
 license = ["SPDX:GPL-3.0-or-later"]
 
 # Optional: required by some licenses.
-copyright = ["2020-2024 Daniele Stochino"]
+copyright = ["2024 Daniele Stochino"]
 
 # [permissions]
 # files = "Save .blend files"
