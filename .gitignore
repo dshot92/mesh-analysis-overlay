@@ -1,3 +1,9 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
+
+# Explicitly ignore all .pyc files
+*.pyc
+
+# Ignore the entire __pycache__ directory
+__pycache__/
