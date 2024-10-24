@@ -8,10 +8,11 @@
 import importlib
 
 # from . import operators, panels, utils
-from . import panels
+from . import panels, simple_triangle_gpu
 #
 modules = (
     # operators,
+    simple_triangle_gpu,
     panels,
     # utils,
 )
@@ -19,6 +20,7 @@ modules = (
 if "bpy" in locals():
     # importlib.reload(operators)
     importlib.reload(panels)
+    importlib.reload(simple_triangle_gpu)
     # importlib.reload(utils)
 #
 #
