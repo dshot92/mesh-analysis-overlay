@@ -45,79 +45,72 @@ class GPUDrawer:
         if obj and obj.type == "MESH":
             # Draw all elements using the stored data
             if self.show_tris:
-                if self.mesh_analyzer.tris_data:
-                    offset_verts = [
-                        v + n * props.overlay_face_offset
-                        for v, n in zip(
-                            self.mesh_analyzer.tris_data,
-                            self.mesh_analyzer.tris_normals,
-                        )
-                    ]
+                offset_verts = [
+                    v + n * props.overlay_face_offset
+                    for v, n in zip(
+                        self.mesh_analyzer.tris_data,
+                        self.mesh_analyzer.tris_normals,
+                    )
+                ]
                 self._draw_elements(offset_verts, props.tris_color, "TRIS")
 
             if self.show_quads:
-                if self.mesh_analyzer.quads_data:
-                    offset_verts = [
-                        v + n * props.overlay_face_offset
-                        for v, n in zip(
-                            self.mesh_analyzer.quads_data,
-                            self.mesh_analyzer.quads_normals,
-                        )
-                    ]
-                    self._draw_elements(
-                        offset_verts,
-                        props.quads_color,
-                        "TRIS",  # Quads are triangulated
+                offset_verts = [
+                    v + n * props.overlay_face_offset
+                    for v, n in zip(
+                        self.mesh_analyzer.quads_data,
+                        self.mesh_analyzer.quads_normals,
                     )
+                ]
+                self._draw_elements(
+                    offset_verts,
+                    props.quads_color,
+                    "TRIS",  # Quads are triangulated
+                )
 
             if self.show_ngons:
-                if self.mesh_analyzer.ngons_data:
-                    offset_verts = [
-                        v + n * props.overlay_face_offset
-                        for v, n in zip(
-                            self.mesh_analyzer.ngons_data,
-                            self.mesh_analyzer.ngons_normals,
-                        )
-                    ]
+                offset_verts = [
+                    v + n * props.overlay_face_offset
+                    for v, n in zip(
+                        self.mesh_analyzer.ngons_data,
+                        self.mesh_analyzer.ngons_normals,
+                    )
+                ]
                 self._draw_elements(offset_verts, props.ngons_color, "TRIS")
 
             if self.show_poles:
-                if self.mesh_analyzer.poles_data:
-                    self._draw_elements(
-                        self.mesh_analyzer.poles_data,
-                        props.poles_color,
-                        "POINTS",
-                        size=props.overlay_vertex_radius,
-                    )
+                self._draw_elements(
+                    self.mesh_analyzer.poles_data,
+                    props.poles_color,
+                    "POINTS",
+                    size=props.overlay_vertex_radius,
+                )
 
             if self.show_singles:
-                if self.mesh_analyzer.singles_data:
-                    self._draw_elements(
-                        self.mesh_analyzer.singles_data,
-                        props.singles_color,
-                        "POINTS",
-                        size=props.overlay_vertex_radius,
-                    )
+                self._draw_elements(
+                    self.mesh_analyzer.singles_data,
+                    props.singles_color,
+                    "POINTS",
+                    size=props.overlay_vertex_radius,
+                )
 
             if self.show_non_manifold_edges:
-                if self.mesh_analyzer.non_manifold_edges_data:
-                    self._draw_elements(
-                        self.mesh_analyzer.non_manifold_edges_data,
-                        props.non_manifold_edges_color,
-                        "LINES",
-                        line_width=props.overlay_edge_width,
-                    )
+                self._draw_elements(
+                    self.mesh_analyzer.non_manifold_edges_data,
+                    props.non_manifold_edges_color,
+                    "LINES",
+                    line_width=props.overlay_edge_width,
+                )
 
             if self.show_non_manifold_verts:
-                if self.mesh_analyzer.non_manifold_verts_data:
-                    self._draw_elements(
-                        self.mesh_analyzer.non_manifold_verts_data,
-                        props.non_manifold_verts_color,
-                        "POINTS",
-                        size=props.overlay_vertex_radius,
-                    )
+                self._draw_elements(
+                    self.mesh_analyzer.non_manifold_verts_data,
+                    props.non_manifold_verts_color,
+                    "POINTS",
+                    size=props.overlay_vertex_radius,
+                )
 
-    def update_topology(self, scene):
+    def depsgraph_update(self, scene, depsgraph):
         if self.is_running:
             obj = bpy.context.active_object
             if obj and obj.type == "MESH":
@@ -172,7 +165,7 @@ class GPUDrawer:
             self.handle = bpy.types.SpaceView3D.draw_handler_add(
                 self.draw, (), "WINDOW", "POST_VIEW"
             )
-            bpy.app.handlers.depsgraph_update_post.append(self.update_topology)
+            bpy.app.handlers.depsgraph_update_post.append(self.depsgraph_update)
             self.is_running = True
 
             # Force initial analysis
@@ -191,8 +184,8 @@ class GPUDrawer:
             if self.handle:
                 bpy.types.SpaceView3D.draw_handler_remove(self.handle, "WINDOW")
             # Remove depsgraph callback
-            if self.update_topology in bpy.app.handlers.depsgraph_update_post:
-                bpy.app.handlers.depsgraph_update_post.remove(self.update_topology)
+            if self.depsgraph_update in bpy.app.handlers.depsgraph_update_post:
+                bpy.app.handlers.depsgraph_update_post.remove(self.depsgraph_update)
             self.handle = None
             self.is_running = False
 
