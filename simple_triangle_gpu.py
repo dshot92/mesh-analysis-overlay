@@ -57,6 +57,9 @@ class GPUDrawer:
 
         obj = bpy.context.active_object
         if obj and self.mesh_analyzer:
+            bpy.context.view_layer.update()  # Force update
+            if obj.mode == "EDIT":
+                obj.update_from_editmode()
             mesh_data = self.mesh_analyzer.analyze_mesh(obj)
             if mesh_data:
                 self.create_batch(mesh_data)
@@ -83,12 +86,13 @@ class GPUDrawer:
 
     def stop(self):
         if self.is_running:
-            bpy.types.SpaceView3D.draw_handler_remove(self.handle, "WINDOW")
+            if self.handle:
+                bpy.types.SpaceView3D.draw_handler_remove(self.handle, "WINDOW")
             if self._timer:
                 bpy.app.timers.unregister(self._timer)
-                self._timer = None
             self.handle = None
-            self.is_running = True
+            self._timer = None
+            self.is_running = False
 
     def timer_update(self):
         if self.is_running:
@@ -116,7 +120,7 @@ class SimpleTriangleOperator(bpy.types.Operator):
         else:
             drawer.start()
         context.area.tag_redraw()
-        return {"FINISHED"}
+        return {"FINISHED"}  # Changed from RUNNING_MODAL to FINISHED
 
 
 class SimpleTrianglePanel(bpy.types.Panel):
@@ -148,6 +152,10 @@ def register():
 
 
 def unregister():
-    drawer.stop()
+    if drawer:
+        drawer.stop()
     for cls in reversed(classes):
-        bpy.utils.unregister_class(cls)
+        try:
+            bpy.utils.unregister_class(cls)
+        except:
+            pass
