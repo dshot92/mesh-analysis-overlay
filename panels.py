@@ -62,7 +62,7 @@ class GPU_Overlay_Topology_Panel(bpy.types.Panel):
         box = layout.box()
         box.label(text="Offset Settings:")
         box.prop(props, "poly_offset", text="Overlay Face Offset")
-        box.prop(props, "poles_radius", text="Pole Radius")
+        box.prop(props, "poles_radius", text="Overlay Vertex Radius")
 
 
 classes = (GPU_Overlay_Topology_Panel,)
