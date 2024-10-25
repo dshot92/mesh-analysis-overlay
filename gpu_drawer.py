@@ -5,26 +5,28 @@ from mathutils import Vector
 from .mesh_topology_analyzer import MeshTopologyAnalyzer
 
 
-class GPUDrawer:  # Renamed from GPUDrawer
+class GPUDrawer:
     def __init__(self):
         self.handle = None
         self.batch = None
         self.shader = gpu.shader.from_builtin("SMOOTH_COLOR")
         self.is_running = False
-        self.mesh_analyzer = None
         self._timer = None
+        self.mesh_analyzer = MeshTopologyAnalyzer()
+        # Add visibility flags
         self.show_tris = True
         self.show_quads = True
         self.show_ngons = True
 
-    def set_mesh_analyzer(self, analyzer):
-        self.mesh_analyzer = analyzer
-
-    def update_visibility():
-        if hasattr(bpy.context.scene, "gpu_topology_overlay"):
-            drawer.show_tris = bpy.context.scene.gpu_topology_overlay.show_tris
-            drawer.show_quads = bpy.context.scene.gpu_topology_overlay.show_quads
-            drawer.show_ngons = bpy.context.scene.gpu_topology_overlay.show_ngons
+    def update_visibility(self):
+        if hasattr(bpy.context.scene, "GPU_Topology_Overlay_Properties"):
+            self.show_tris = bpy.context.scene.GPU_Topology_Overlay_Properties.show_tris
+            self.show_quads = (
+                bpy.context.scene.GPU_Topology_Overlay_Properties.show_quads
+            )
+            self.show_ngons = (
+                bpy.context.scene.GPU_Topology_Overlay_Properties.show_ngons
+            )
 
     def draw(self):
         gpu.state.blend_set("ALPHA")
@@ -32,6 +34,7 @@ class GPUDrawer:  # Renamed from GPUDrawer
         self.shader.bind()
 
         props = bpy.context.scene.GPU_Topology_Overlay_Properties
+        self.update_visibility()  # Add this line
 
         obj = bpy.context.active_object
         if obj and self.mesh_analyzer:
@@ -39,22 +42,33 @@ class GPUDrawer:  # Renamed from GPUDrawer
             if obj.mode == "EDIT":
                 obj.update_from_editmode()
 
-            # Get current colors from scene properties
-            colors = {
-                "tris": tuple(props.tris_color),  # Convert to tuple
-                "quads": tuple(props.quads_color),
-                "ngons": tuple(props.ngons_color),
-            }
+            vertices = []
+            vertex_colors = []
+            offset_value = props.poly_offset
 
-            self.mesh_analyzer.analyze_mesh(obj)
-            mesh_data = self.mesh_analyzer.get_visible_data(
-                self.show_tris,
-                self.show_quads,
-                self.show_ngons,
-                colors=colors,  # Pass the current colors
-            )
+            if self.show_tris:
+                self.mesh_analyzer.analyze_tris(obj, offset_value)
+                vertices.extend(self.mesh_analyzer.tris)
+                vertex_colors.extend(
+                    [tuple(props.tris_color)] * len(self.mesh_analyzer.tris)
+                )
 
-            if mesh_data["vertices"]:
+            if self.show_quads:
+                self.mesh_analyzer.analyze_quads(obj, offset_value)
+                vertices.extend(self.mesh_analyzer.quads)
+                vertex_colors.extend(
+                    [tuple(props.quads_color)] * len(self.mesh_analyzer.quads)
+                )
+
+            if self.show_ngons:
+                self.mesh_analyzer.analyze_ngons(obj, offset_value)
+                vertices.extend(self.mesh_analyzer.ngons)
+                vertex_colors.extend(
+                    [tuple(props.ngons_color)] * len(self.mesh_analyzer.ngons)
+                )
+
+            if vertices:
+                mesh_data = {"vertices": vertices, "colors": vertex_colors}
                 self.create_batch(mesh_data)
                 self.batch.draw(self.shader)
 
@@ -100,11 +114,6 @@ class GPUDrawer:  # Renamed from GPUDrawer
 
 # Update the drawer instance
 drawer = GPUDrawer()
-drawer.set_mesh_analyzer(MeshTopologyAnalyzer())
-
-
-drawer = GPUDrawer()
-drawer.set_mesh_analyzer(MeshTopologyAnalyzer())
 
 
 class GPU_Overlay_Topology(bpy.types.Operator):
@@ -117,8 +126,11 @@ class GPU_Overlay_Topology(bpy.types.Operator):
             drawer.stop()
         else:
             drawer.start()
-        context.area.tag_redraw()
-        return {"FINISHED"}  # Changed from RUNNING_MODAL to FINISHED
+        # Force panel refresh
+        for area in context.screen.areas:
+            if area.type == "VIEW_3D":
+                area.tag_redraw()
+        return {"FINISHED"}
 
 
 classes = (GPU_Overlay_Topology,)
@@ -134,8 +146,4 @@ def unregister():
         drawer.stop()
 
     for cls in reversed(classes):
-        try:
-            bpy.utils.unregister_class(cls)
-        except:
-            pass
-
+        bpy.utils.unregister_class(cls)
