@@ -9,6 +9,7 @@ class MeshTopologyAnalyzer:
         self.quads = []
         self.ngons = []
         self.poles = []
+        self.singles = []
 
     def analyze_tris(self, obj, offset_value):
         self.tris = []
@@ -69,3 +70,18 @@ class MeshTopologyAnalyzer:
             if len(connected_edges) > 4:
                 vert_pos = obj.matrix_world @ vert.co
                 self.poles.append(vert_pos)
+
+    def analyze_singles(self, obj):
+        self.singles = []
+        for vert in obj.data.vertices:
+            # Get connected edges
+            connected_edges = [
+                e
+                for e in obj.data.edges
+                if vert.index in (e.vertices[0], e.vertices[1])
+            ]
+
+            # Check if vertex has no connected edges
+            if len(connected_edges) == 0:
+                vert_pos = obj.matrix_world @ vert.co
+                self.singles.append(vert_pos)

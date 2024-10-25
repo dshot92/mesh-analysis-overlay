@@ -18,6 +18,7 @@ class GPUDrawer:
         self.show_quads = True
         self.show_ngons = True
         self.show_poles = True
+        self.show_singles = True
         self.sphere_vertices = self.create_sphere_vertices(radius=0.02, segments=8)
 
     def update_visibility(self):
@@ -25,6 +26,9 @@ class GPUDrawer:
         self.show_quads = bpy.context.scene.GPU_Topology_Overlay_Properties.show_quads
         self.show_ngons = bpy.context.scene.GPU_Topology_Overlay_Properties.show_ngons
         self.show_poles = bpy.context.scene.GPU_Topology_Overlay_Properties.show_poles
+        self.show_singles = (
+            bpy.context.scene.GPU_Topology_Overlay_Properties.show_singles
+        )
 
     def create_sphere_vertices(self, radius=0.02, segments=8):
         """Create vertices for a low-poly sphere"""
@@ -54,7 +58,7 @@ class GPUDrawer:
             if obj.mode == "EDIT":
                 obj.update_from_editmode()
 
-            # Collect faces
+            # Collect faces (Tris, Quads, N-gons)
             faces = []
             face_colors = []
             offset_value = props.poly_offset
@@ -80,7 +84,7 @@ class GPUDrawer:
                     [tuple(props.ngons_color)] * len(self.mesh_analyzer.ngons)
                 )
 
-            # Collect vertices
+            # Collect vertices (Poles and Singles)
             vertices = []
             vertex_colors = []
             if self.show_poles:
@@ -88,7 +92,14 @@ class GPUDrawer:
                 vertices = self.mesh_analyzer.poles
                 vertex_colors = [tuple(props.poles_color)] * len(vertices)
 
-            # Draw faces
+            if self.show_singles:
+                self.mesh_analyzer.analyze_singles(obj)
+                vertices.extend(self.mesh_analyzer.singles)
+                vertex_colors.extend(
+                    [tuple(props.singles_color)] * len(self.mesh_analyzer.singles)
+                )
+
+            # Draw faces (Tris, Quads, N-gons)
             if faces:
                 vertex_shader = gpu.shader.from_builtin("SMOOTH_COLOR")
                 vertex_shader.bind()
@@ -96,7 +107,7 @@ class GPUDrawer:
                 self.create_batch(mesh_data, "TRIS")
                 self.batch.draw(vertex_shader)
 
-            # Draw vertices
+            # Draw vertices (Poles and Singles)
             if vertices:
                 vertex_shader = gpu.shader.from_builtin("SMOOTH_COLOR")
                 vertex_shader.bind()

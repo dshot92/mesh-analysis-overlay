@@ -71,6 +71,19 @@ class GPU_Topology_Overlay_Props(bpy.types.PropertyGroup):
         min=1.0,
         max=50.0,
     )
+    show_singles: bpy.props.BoolProperty(
+        name="Show Singles",
+        description="Show single vertex indicators",
+        default=True,
+    )
+    singles_color: bpy.props.FloatVectorProperty(
+        name="Singles Color",
+        subtype="COLOR",
+        default=(1.0, 1.0, 0.0, 0.5),  # Yellow with 0.5 alpha
+        size=4,
+        min=0.0,
+        max=1.0,
+    )
 
 
 classes = (GPU_Topology_Overlay_Props,)
