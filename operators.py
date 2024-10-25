@@ -13,10 +13,10 @@ from .gpu_drawer import GPUDrawer
 drawer = GPUDrawer()
 
 
-class Mesh_Overlay_Topology(bpy.types.Operator):
-    bl_idname = "view3d.mesh_analysis_topology_overlay"
-    bl_label = "Toggle Mesh Topology Overlay"
-    bl_description = "Toggle the display of the Mesh Overlay Topology in the 3D viewport"
+class Mesh_Analysis_Overlay(bpy.types.Operator):
+    bl_idname = "view3d.mesh_analysis_overlay"
+    bl_label = "Toggle Mesh Analysis Overlay"
+    bl_description = "Toggle the display of the Mesh Analysis Overlay in the 3D viewport"
 
     def execute(self, context):
         if drawer.is_running:
@@ -30,7 +30,7 @@ class Mesh_Overlay_Topology(bpy.types.Operator):
         return {"FINISHED"}
 
 
-classes = (Mesh_Overlay_Topology,)
+classes = (Mesh_Analysis_Overlay,)
 
 
 def register():

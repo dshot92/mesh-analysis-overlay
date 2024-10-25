@@ -8,7 +8,7 @@ import bmesh
 import bpy
 
 
-class MeshTopologyAnalyzer:
+class MeshAnalyzer:
     def __init__(self):
         self.clear_data()
 
@@ -41,7 +41,7 @@ class MeshTopologyAnalyzer:
         # Clear previous data
         self.clear_data()
 
-        props = bpy.context.scene.Mesh_Topology_Overlay_Properties
+        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
 
         # Analyze vertices for poles and singles and non-manifold verts
         verts = props.show_poles or props.show_singles or props.show_non_manifold_verts

@@ -6,25 +6,24 @@
 
 import bpy
 from . import operators  # Keep this import
-from .operators import Mesh_Overlay_Topology  # Add this import
 
 
-class Mesh_Overlay_Topology_Panel(bpy.types.Panel):
-    bl_label = "Mesh Overlay Topology"
-    bl_idname = "VIEW3D_PT_gpu_overlay_topology"
+class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
+    bl_label = "Mesh Analysis Overlay"
+    bl_idname = "VIEW3D_PT_mesh_analysis_overlay"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Mesh Overlay Topology"
+    bl_category = "Mesh Analysis Overlay"
 
     def draw(self, context):
         layout = self.layout
-        props = context.scene.Mesh_Topology_Overlay_Properties
+        props = context.scene.Mesh_Analysis_Overlay_Properties
         factor = 0.85
 
         # Toggle button for overlay
         row = layout.row()
         row.operator(
-            "view3d.mesh_analysis_topology_overlay",
+            "view3d.mesh_analysis_overlay",
             text="Mesh Overlay",
             icon="OVERLAY",
             depress=operators.drawer.is_running,
@@ -78,7 +77,7 @@ class Mesh_Overlay_Topology_Panel(bpy.types.Panel):
         layout.prop(props, "overlay_edge_width", text="Overlay Edge Width")
 
 
-classes = (Mesh_Overlay_Topology_Panel,)
+classes = (Mesh_Analysis_Overlay_Panel,)
 
 
 def register():

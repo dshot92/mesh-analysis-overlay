@@ -7,7 +7,7 @@
 import bpy
 import gpu
 from gpu_extras.batch import batch_for_shader
-from .mesh_topology_analyzer import MeshTopologyAnalyzer
+from .mesh_analyzer import MeshAnalyzer
 
 
 class GPUDrawer:
@@ -16,7 +16,7 @@ class GPUDrawer:
         self.batch = None
         self.shader = gpu.shader.from_builtin("FLAT_COLOR")
         self.is_running = False
-        self.mesh_analyzer = MeshTopologyAnalyzer()
+        self.mesh_analyzer = MeshAnalyzer()
         self.show_tris = True
         self.show_quads = True
         self.show_ngons = True
@@ -26,7 +26,7 @@ class GPUDrawer:
         self.show_non_manifold_verts = True
 
     def update_visibility(self):
-        props = bpy.context.scene.Mesh_Topology_Overlay_Properties
+        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
         self.show_tris = props.show_tris
         self.show_quads = props.show_quads
         self.show_ngons = props.show_ngons
@@ -37,7 +37,7 @@ class GPUDrawer:
 
     def draw(self):
 
-        props = bpy.context.scene.Mesh_Topology_Overlay_Properties
+        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
         self.update_visibility()
 
         obj = bpy.context.active_object
@@ -102,7 +102,7 @@ class GPUDrawer:
                     obj.update_from_editmode()
 
                 # Analyze mesh
-                props = scene.Mesh_Topology_Overlay_Properties
+                props = scene.Mesh_Analysis_Overlay_Properties
                 self.mesh_analyzer.analyze_mesh(obj, props.overlay_face_offset)
 
                 # Redraw viewport
@@ -150,7 +150,7 @@ class GPUDrawer:
             # Force initial analysis
             obj = bpy.context.active_object
             if obj and obj.type == "MESH":
-                props = bpy.context.scene.Mesh_Topology_Overlay_Properties
+                props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
                 self.mesh_analyzer.analyze_mesh(obj, props.overlay_face_offset)
                 # Force viewport redraw
                 for window in bpy.context.window_manager.windows:

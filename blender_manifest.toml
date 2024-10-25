@@ -1,20 +1,20 @@
 schema_version = "1.0.0"
 
-id = "mesh_analysis_topology"
+id = "mesh_analysis_overlay"
 version = "0.0.1"
-name = "Mesh Analysis Topology"
-tagline = "Mesh Analysis Topology"
+name = "Mesh Analysis Overlay"
+tagline = "Mesh Analysis Overlay"
 maintainer = "Daniele Stochino <dshot92@gmail.com>"
 
 # Supported types: "add-on", "theme"
 type = "add-on"
 
 # Optional link to documentation, support, source files, etc
-website = "https://github.com/dshot92/gpu-overlay-blender"
+website = "https://github.com/dshot92/mesh-analysis-overlay"
 
 # Optional list defined by Blender and server, see:
 # https://docs.blender.org/manual/en/dev/advanced/extensions/tags.html
-tags = ["Pipeline"]
+tags = ["3D View"]
 
 blender_version_min = "4.2.0"
 # Optional: maximum supported Blender version
