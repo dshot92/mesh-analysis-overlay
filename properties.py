@@ -41,7 +41,7 @@ class GPU_Topology_Overlay_Props(bpy.types.PropertyGroup):
     quads_color: bpy.props.FloatVectorProperty(
         name="Quads Color",
         subtype="COLOR",
-        default=(0.0, 0.0, 1.0, 0.5),
+        default=(0.0, 1.0, 0.0, 0.5),
         size=4,
         min=0.0,
         max=1.0,
@@ -49,7 +49,7 @@ class GPU_Topology_Overlay_Props(bpy.types.PropertyGroup):
     ngons_color: bpy.props.FloatVectorProperty(
         name="N-gons Color",
         subtype="COLOR",
-        default=(0.0, 1.0, 0.0, 0.5),
+        default=(0.0, 0.0, 1.0, 0.5),
         size=4,
         min=0.0,
         max=1.0,
