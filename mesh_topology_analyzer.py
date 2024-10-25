@@ -66,8 +66,8 @@ class MeshTopologyAnalyzer:
 
         for face in bm.faces:
             if len(face.verts) == 3:  # Triangle
-                verts = [matrix_world @ v.co for v in face.verts]
                 normal = matrix_world.to_3x3() @ face.normal
+                verts = [matrix_world @ v.co + normal * offset for v in face.verts]
                 self.tris_data.extend(verts)
                 self.tris_normals.extend([normal] * 3)
             elif len(face.verts) == 4:  # Quad
@@ -77,21 +77,27 @@ class MeshTopologyAnalyzer:
 
         # Process quads: triangulate
         for face in quads_to_process:
-            face_copy = face.copy()
-            result = bmesh.ops.triangulate(
-                # bm, faces=[face_copy], quad_method="SHORT_EDGE"
-                # bm, faces=[face_copy], quad_method="BEAUTY",
-                # bm, faces=[face_copy], quad_method="FIXED",
-                # bm, faces=[face_copy], quad_method="LONG_EDGE",
-                bm,
-                faces=[face_copy],
-                quad_method="ALTERNATE",
-            )
-            for new_face in result["faces"]:
-                normal = matrix_world.to_3x3() @ face.normal
-                new_verts = [matrix_world @ v.co for v in new_face.verts]
-                self.quads_data.extend(new_verts)
-                self.quads_normals.extend([normal] * 3)
+            verts = face.verts[:]
+            vert_normals = [matrix_world.to_3x3() @ v.normal for v in verts]
+            vert_coords = [matrix_world @ v.co for v in verts]
+
+            # Create two triangles from the quad (0,1,2) and (0,2,3)
+            tri1_indices = [0, 1, 2]
+            tri2_indices = [0, 2, 3]
+
+            # First triangle
+            tri1_verts = [
+                vert_coords[i] + vert_normals[i] * offset for i in tri1_indices
+            ]
+            self.quads_data.extend(tri1_verts)
+            self.quads_normals.extend([matrix_world.to_3x3() @ face.normal] * 3)
+
+            # Second triangle
+            tri2_verts = [
+                vert_coords[i] + vert_normals[i] * offset for i in tri2_indices
+            ]
+            self.quads_data.extend(tri2_verts)
+            self.quads_normals.extend([matrix_world.to_3x3() @ face.normal] * 3)
 
         # Process ngons: triangulate
         for face in ngons_to_process:
@@ -101,7 +107,9 @@ class MeshTopologyAnalyzer:
             )
             for new_face in result["faces"]:
                 normal = matrix_world.to_3x3() @ face.normal
-                new_verts = [matrix_world @ v.co for v in new_face.verts]
+                new_verts = [
+                    matrix_world @ v.co + normal * offset for v in new_face.verts
+                ]
                 self.ngons_data.extend(new_verts)
                 self.ngons_normals.extend([normal] * 3)
 
