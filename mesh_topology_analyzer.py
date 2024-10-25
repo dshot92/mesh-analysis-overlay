@@ -44,9 +44,7 @@ class MeshTopologyAnalyzer:
         ngon_faces = [f for f in bm.faces if len(f.verts) > 4]
 
         # Triangulate only ngons
-        result = bmesh.ops.triangulate(
-            bm, faces=ngon_faces, quad_method="SHORT_EDGE", ngon_method="BEAUTY"
-        )
+        result = bmesh.ops.triangulate(bm, faces=ngon_faces, ngon_method="EAR_CLIP")
 
         # Get the new triangulated faces from the result
         for new_face in result["faces"]:
