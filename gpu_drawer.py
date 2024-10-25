@@ -44,38 +44,23 @@ class GPUDrawer:
         if obj and obj.type == "MESH":
             # Draw all elements using the stored data
             if self.show_tris:
-                offset_verts = [
-                    v + n * props.overlay_face_offset
-                    for v, n in zip(
-                        self.mesh_analyzer.tris_data,
-                        self.mesh_analyzer.tris_normals,
-                    )
-                ]
-                self._draw_elements(offset_verts, props.tris_color, "TRIS")
+                self._draw_elements(
+                    self.mesh_analyzer.tris_data, props.tris_color, "TRIS"
+                )
 
             if self.show_quads:
-                offset_verts = [
-                    v + n * props.overlay_face_offset
-                    for v, n in zip(
-                        self.mesh_analyzer.quads_data,
-                        self.mesh_analyzer.quads_normals,
-                    )
-                ]
                 self._draw_elements(
-                    offset_verts,
+                    self.mesh_analyzer.quads_data,
                     props.quads_color,
                     "TRIS",  # Quads are triangulated
                 )
 
             if self.show_ngons:
-                offset_verts = [
-                    v + n * props.overlay_face_offset
-                    for v, n in zip(
-                        self.mesh_analyzer.ngons_data,
-                        self.mesh_analyzer.ngons_normals,
-                    )
-                ]
-                self._draw_elements(offset_verts, props.ngons_color, "TRIS")
+                self._draw_elements(
+                    self.mesh_analyzer.ngons_data,
+                    props.ngons_color,
+                    "TRIS",
+                )
 
             if self.show_poles:
                 self._draw_elements(
@@ -134,6 +119,7 @@ class GPUDrawer:
 
         gpu.state.blend_set("ALPHA")
         gpu.state.depth_test_set("LESS_EQUAL")
+        # gpu.state.depth_test_set("NONE")
 
         # Set size/width based on primitive type
         if primitive == "POINTS":
@@ -146,12 +132,12 @@ class GPUDrawer:
         )
         self.batch.draw(self.shader)
 
-    def create_batch(self, mesh_data, primitive="TRIS"):
-        self.batch = batch_for_shader(
-            self.shader,
-            primitive,
-            {"pos": mesh_data["vertices"], "color": mesh_data["colors"]},
-        )
+    # def create_batch(self, mesh_data, primitive="TRIS"):
+    #     self.batch = batch_for_shader(
+    #         self.shader,
+    #         primitive,
+    #         {"pos": mesh_data["vertices"], "color": mesh_data["colors"]},
+    #     )
 
     def start(self):
         if not self.is_running:
