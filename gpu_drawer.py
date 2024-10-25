@@ -20,6 +20,12 @@ class GPUDrawer:  # Renamed from GPUDrawer
     def set_mesh_analyzer(self, analyzer):
         self.mesh_analyzer = analyzer
 
+    def update_visibility():
+        if hasattr(bpy.context.scene, "gpu_topology_overlay"):
+            drawer.show_tris = bpy.context.scene.gpu_topology_overlay.show_tris
+            drawer.show_quads = bpy.context.scene.gpu_topology_overlay.show_quads
+            drawer.show_ngons = bpy.context.scene.gpu_topology_overlay.show_ngons
+
     def draw(self):
         gpu.state.blend_set("ALPHA")
         gpu.state.depth_test_set("LESS_EQUAL")
@@ -132,10 +138,3 @@ def unregister():
             bpy.utils.unregister_class(cls)
         except:
             pass
-
-
-def update_visibility():
-    if hasattr(bpy.context.scene, "gpu_topology_overlay"):
-        drawer.show_tris = bpy.context.scene.gpu_topology_overlay.show_tris
-        drawer.show_quads = bpy.context.scene.gpu_topology_overlay.show_quads
-        drawer.show_ngons = bpy.context.scene.gpu_topology_overlay.show_ngons

@@ -28,7 +28,7 @@ class GPU_Topology_Overlay_Props(bpy.types.PropertyGroup):
         min=0.0,
         max=1.0,
         precision=4,
-        update=lambda self, context: GPUDrawer.update_visibility(),  # Fix the callback
+        # update=lambda self, context: GPUDrawer.update_visibility(),  # Fix the callback
     )
     tris_color: bpy.props.FloatVectorProperty(
         name="Triangles Color",
