@@ -7,7 +7,6 @@
 import bpy
 import gpu
 from gpu_extras.batch import batch_for_shader
-from mathutils import Vector
 from .mesh_topology_analyzer import MeshTopologyAnalyzer
 
 
@@ -146,12 +145,6 @@ class GPUDrawer:
             self.shader, primitive, {"pos": vertices, "color": colors}
         )
         self.batch.draw(self.shader)
-
-    def _draw_points(self, positions, color):
-        if not positions:
-            return
-        for pos in positions:
-            self._draw_sphere(pos, color)
 
     def create_batch(self, mesh_data, primitive="TRIS"):
         self.batch = batch_for_shader(
