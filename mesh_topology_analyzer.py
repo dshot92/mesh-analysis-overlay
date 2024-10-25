@@ -37,8 +37,11 @@ class MeshTopologyAnalyzer:
         # Clear previous data
         self.clear_data()
 
+        # Store ngons for later processing
+        ngons_to_process = []
+
         # Analyze faces
-        for face in bm.faces:  # Use BMesh faces instead of mesh polygons
+        for face in bm.faces:
             verts = [matrix_world @ v.co for v in face.verts]
             normal = matrix_world.to_3x3() @ face.normal
 
@@ -50,11 +53,21 @@ class MeshTopologyAnalyzer:
                 tri2 = [verts[2], verts[3], verts[0]]
                 self.quads_data.extend(tri1 + tri2)
                 self.quads_normals.extend([normal] * 6)
-            else:  # N-gon
-                for i in range(1, len(face.verts) - 1):
-                    tri = [verts[0], verts[i], verts[i + 1]]
-                    self.ngons_data.extend(tri)
-                    self.ngons_normals.extend([normal] * 3)
+            elif len(face.verts) > 4:  # N-gon
+                ngons_to_process.append((face, verts, normal))
+
+        # Process ngons : triangulate
+        for face, verts, normal in ngons_to_process:
+            temp_bm = bmesh.new()
+            temp_bm.faces.new([temp_bm.verts.new(v.co) for v in face.verts])
+            result = bmesh.ops.triangulate(
+                temp_bm, faces=temp_bm.faces, ngon_method="EAR_CLIP"
+            )
+            for new_face in result["faces"]:
+                new_verts = [matrix_world @ v.co for v in new_face.verts]
+                self.ngons_data.extend(new_verts)
+                self.ngons_normals.extend([normal] * 3)
+            temp_bm.free()
 
         # Analyze vertices for poles and singles
         for v in bm.verts:
