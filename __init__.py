@@ -16,6 +16,7 @@ modules = (
 )
 
 if "bpy" in locals():
+    importlib.reload(properties)
     importlib.reload(panels)
     importlib.reload(gpu_drawer)
 
