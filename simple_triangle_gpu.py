@@ -1,28 +1,68 @@
 import bpy
 import gpu
 from gpu_extras.batch import batch_for_shader
+from mathutils import Vector
 
 
 class SimpleTriangleGPU:
     def __init__(self):
         self.handle = None
         self.batch = None
-        self.shader = None
+        self.shader = gpu.shader.from_builtin("SMOOTH_COLOR")
         self.is_running = False
 
     def draw(self):
-        self.shader.bind()
-        self.shader.uniform_float("color", (1, 0, 0, 1))  # Red color (R, G, B, A)
-        self.batch.draw(self.shader)
+        # Enable alpha blending
+        gpu.state.blend_set("ALPHA")
+        gpu.state.depth_test_set("LESS_EQUAL")
 
-    def create_batch(self):
-        vertices = [(0, 0, 0), (0.5, 1, 0), (1, 0, 0)]
-        self.shader = gpu.shader.from_builtin("UNIFORM_COLOR")
-        self.batch = batch_for_shader(self.shader, "TRIS", {"pos": vertices})
+        self.shader.bind()
+
+        # Get the active object
+        obj = bpy.context.active_object
+
+        if obj and obj.type == "MESH":
+            # Update the batch for the current object
+            self.create_batch(obj)
+
+            # Draw the batch
+            self.batch.draw(self.shader)
+
+        # Restore GPU state
+        gpu.state.blend_set("NONE")
+        gpu.state.depth_test_set("NONE")
+
+    def create_batch(self, obj):
+        vertices = []
+        colors = []
+
+        # Iterate through faces
+        for face in obj.data.polygons:
+            # Get face normal and create small offset
+            offset = face.normal * 0.001
+
+            # Apply offset to vertices
+            face_verts = [
+                (obj.matrix_world @ Vector(obj.data.vertices[v].co)) + offset
+                for v in face.vertices
+            ]
+            face_color = (
+                (1, 0, 0, 0.5)
+                if len(face.vertices) == 3
+                else (0, 0, 1, 0.5) if len(face.vertices) == 4 else (0, 1, 0, 0.5)
+            )
+
+            # Triangulate the face
+            for i in range(1, len(face_verts) - 1):
+                vertices.extend([face_verts[0], face_verts[i], face_verts[i + 1]])
+                colors.extend([face_color, face_color, face_color])
+
+        self.batch = batch_for_shader(
+            self.shader, "TRIS", {"pos": vertices, "color": colors}
+        )
 
     def start(self):
         if not self.is_running:
-            self.create_batch()
             self.handle = bpy.types.SpaceView3D.draw_handler_add(
                 self.draw, (), "WINDOW", "POST_VIEW"
             )
