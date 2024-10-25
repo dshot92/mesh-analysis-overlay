@@ -14,7 +14,7 @@ class GPUDrawer:
     def __init__(self):
         self.handle = None
         self.batch = None
-        self.shader = gpu.shader.from_builtin("SMOOTH_COLOR")
+        self.shader = gpu.shader.from_builtin("FLAT_COLOR")
         self.is_running = False
         self.mesh_analyzer = MeshTopologyAnalyzer()
         self.show_tris = True
