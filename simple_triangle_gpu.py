@@ -6,7 +6,7 @@ from mathutils import Vector
 
 class MeshTopologyAnalyzer:
     @staticmethod
-    def analyze_mesh(obj):
+    def analyze_mesh(obj, show_tris=True, show_quads=True, show_ngons=True):
         if not obj or obj.type != "MESH":
             return None
 
@@ -16,6 +16,15 @@ class MeshTopologyAnalyzer:
         }
 
         for face in obj.data.polygons:
+            vert_count = len(face.vertices)
+            # Skip faces based on visibility settings
+            if (
+                (vert_count == 3 and not show_tris)
+                or (vert_count == 4 and not show_quads)
+                or (vert_count > 4 and not show_ngons)
+            ):
+                continue
+
             offset = face.normal * 0.001
             face_verts = [
                 (obj.matrix_world @ Vector(obj.data.vertices[v].co)) + offset
@@ -24,8 +33,8 @@ class MeshTopologyAnalyzer:
 
             face_color = (
                 (1, 0, 0, 0.5)
-                if len(face.vertices) == 3
-                else (0, 0, 1, 0.5) if len(face.vertices) == 4 else (0, 1, 0, 0.5)
+                if vert_count == 3
+                else (0, 0, 1, 0.5) if vert_count == 4 else (0, 1, 0, 0.5)
             )
 
             for i in range(1, len(face_verts) - 1):
@@ -45,6 +54,9 @@ class GPUDrawer:
         self.is_running = False
         self.mesh_analyzer = None
         self._timer = None
+        self.show_tris = True
+        self.show_quads = True
+        self.show_ngons = True
 
     def set_mesh_analyzer(self, analyzer):
         self.mesh_analyzer = analyzer
@@ -60,7 +72,9 @@ class GPUDrawer:
             bpy.context.view_layer.update()  # Force update
             if obj.mode == "EDIT":
                 obj.update_from_editmode()
-            mesh_data = self.mesh_analyzer.analyze_mesh(obj)
+            mesh_data = self.mesh_analyzer.analyze_mesh(
+                obj, self.show_tris, self.show_quads, self.show_ngons
+            )
             if mesh_data:
                 self.create_batch(mesh_data)
                 self.batch.draw(self.shader)
@@ -132,15 +146,27 @@ class SimpleTrianglePanel(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
+
+        # Toggle button for overlay
         row = layout.row()
         if drawer.is_running:
             row.operator(
-                SimpleTriangleOperator.bl_idname, text="Hide Triangle", icon="HIDE_ON"
+                SimpleTriangleOperator.bl_idname, text="Hide Overlay", icon="HIDE_ON"
             )
         else:
             row.operator(
-                SimpleTriangleOperator.bl_idname, text="Show Triangle", icon="HIDE_OFF"
+                SimpleTriangleOperator.bl_idname, text="Show Overlay", icon="HIDE_OFF"
             )
+
+        # Polygon type toggles
+        box = layout.box()
+        box.label(text="Show Polygons:")
+        row = box.row()
+        row.prop(context.scene, "show_tris", text="Triangles", toggle=True)
+        row = box.row()
+        row.prop(context.scene, "show_quads", text="Quads", toggle=True)
+        row = box.row()
+        row.prop(context.scene, "show_ngons", text="N-Gons", toggle=True)
 
 
 classes = (SimpleTriangleOperator, SimpleTrianglePanel)
@@ -150,12 +176,35 @@ def register():
     for cls in classes:
         bpy.utils.register_class(cls)
 
+    # Register properties
+    bpy.types.Scene.show_tris = bpy.props.BoolProperty(
+        default=True, update=lambda self, context: update_visibility()
+    )
+    bpy.types.Scene.show_quads = bpy.props.BoolProperty(
+        default=True, update=lambda self, context: update_visibility()
+    )
+    bpy.types.Scene.show_ngons = bpy.props.BoolProperty(
+        default=True, update=lambda self, context: update_visibility()
+    )
+
 
 def unregister():
     if drawer:
         drawer.stop()
+
+    # Unregister properties
+    del bpy.types.Scene.show_tris
+    del bpy.types.Scene.show_quads
+    del bpy.types.Scene.show_ngons
+
     for cls in reversed(classes):
         try:
             bpy.utils.unregister_class(cls)
         except:
             pass
+
+
+def update_visibility():
+    drawer.show_tris = bpy.context.scene.show_tris
+    drawer.show_quads = bpy.context.scene.show_quads
+    drawer.show_ngons = bpy.context.scene.show_ngons
