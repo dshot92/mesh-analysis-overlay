@@ -9,20 +9,6 @@ class MeshTopologyAnalyzer:
         self.quads = []
         self.ngons = []
         self.poles = []
-        self._need_update = True
-
-    @classmethod
-    def depsgraph_update_handler(cls, scene, depsgraph):
-        for update in depsgraph.updates:
-            if isinstance(update.id, bpy.types.Mesh):
-                cls._need_update = True
-                break
-
-    def needs_update(self):
-        if self._need_update:
-            self._need_update = False
-            return True
-        return False
 
     def analyze_tris(self, obj, offset_value):
         self.tris = []
@@ -83,15 +69,3 @@ class MeshTopologyAnalyzer:
             if len(connected_edges) > 4:
                 vert_pos = obj.matrix_world @ vert.co
                 self.poles.append(vert_pos)
-
-
-def register():
-    bpy.app.handlers.depsgraph_update_post.append(
-        MeshTopologyAnalyzer.depsgraph_update_handler
-    )
-
-
-def unregister():
-    bpy.app.handlers.depsgraph_update_post.remove(
-        MeshTopologyAnalyzer.depsgraph_update_handler
-    )
