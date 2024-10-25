@@ -45,10 +45,8 @@ class GPUDrawer:
     def draw(self):
         gpu.state.blend_set("ALPHA")
         gpu.state.depth_test_set("LESS_EQUAL")
-        self.shader.bind()
-
         props = bpy.context.scene.GPU_Topology_Overlay_Properties
-        self.update_visibility()  # Add this line
+        self.update_visibility()
 
         obj = bpy.context.active_object
         if obj and self.mesh_analyzer:
@@ -56,58 +54,64 @@ class GPUDrawer:
             if obj.mode == "EDIT":
                 obj.update_from_editmode()
 
-            vertices = []
-            vertex_colors = []
+            # Collect faces
+            faces = []
+            face_colors = []
             offset_value = props.poly_offset
 
             if self.show_tris:
                 self.mesh_analyzer.analyze_tris(obj, offset_value)
-                vertices.extend(self.mesh_analyzer.tris)
-                vertex_colors.extend(
+                faces.extend(self.mesh_analyzer.tris)
+                face_colors.extend(
                     [tuple(props.tris_color)] * len(self.mesh_analyzer.tris)
                 )
 
             if self.show_quads:
                 self.mesh_analyzer.analyze_quads(obj, offset_value)
-                vertices.extend(self.mesh_analyzer.quads)
-                vertex_colors.extend(
+                faces.extend(self.mesh_analyzer.quads)
+                face_colors.extend(
                     [tuple(props.quads_color)] * len(self.mesh_analyzer.quads)
                 )
 
             if self.show_ngons:
                 self.mesh_analyzer.analyze_ngons(obj, offset_value)
-                vertices.extend(self.mesh_analyzer.ngons)
-                vertex_colors.extend(
+                faces.extend(self.mesh_analyzer.ngons)
+                face_colors.extend(
                     [tuple(props.ngons_color)] * len(self.mesh_analyzer.ngons)
                 )
 
+            # Collect vertices
+            vertices = []
+            vertex_colors = []
             if self.show_poles:
                 self.mesh_analyzer.analyze_poles(obj)
-                shader = gpu.shader.from_builtin("UNIFORM_COLOR")
-                shader.bind()
-                shader.uniform_float("color", props.poles_color)
+                vertices = self.mesh_analyzer.poles
+                vertex_colors = [tuple(props.poles_color)] * len(vertices)
 
-                gpu.state.point_size_set(props.poles_radius)
-                gpu.state.blend_set("ALPHA")
+            # Draw faces
+            if faces:
+                vertex_shader = gpu.shader.from_builtin("SMOOTH_COLOR")
+                vertex_shader.bind()
+                mesh_data = {"vertices": faces, "colors": face_colors}
+                self.create_batch(mesh_data, "TRIS")
+                self.batch.draw(vertex_shader)
 
-                with gpu.matrix.push_pop():
-                    batch = batch_for_shader(
-                        shader, "POINTS", {"pos": self.mesh_analyzer.poles}
-                    )
-                    batch.draw(shader)
-
+            # Draw vertices
             if vertices:
+                vertex_shader = gpu.shader.from_builtin("SMOOTH_COLOR")
+                vertex_shader.bind()
+                gpu.state.point_size_set(props.poles_radius)
                 mesh_data = {"vertices": vertices, "colors": vertex_colors}
-                self.create_batch(mesh_data)
-                self.batch.draw(self.shader)
+                self.create_batch(mesh_data, "POINTS")
+                self.batch.draw(vertex_shader)
 
         gpu.state.blend_set("NONE")
         gpu.state.depth_test_set("NONE")
 
-    def create_batch(self, mesh_data):
+    def create_batch(self, mesh_data, primitive="TRIS"):
         self.batch = batch_for_shader(
             self.shader,
-            "TRIS",
+            primitive,
             {"pos": mesh_data["vertices"], "color": mesh_data["colors"]},
         )
 
