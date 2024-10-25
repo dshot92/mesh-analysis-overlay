@@ -4,7 +4,6 @@
 # Author: Daniele Stochino (dshot92)
 # ----------------------------------------------------------
 
-import bpy
 import bmesh
 
 
