@@ -4,61 +4,72 @@ from gpu_extras.batch import batch_for_shader
 from mathutils import Vector
 
 
-class SimpleTriangleGPU:
-    def __init__(self):
-        self.handle = None
-        self.batch = None
-        self.shader = gpu.shader.from_builtin("SMOOTH_COLOR")
-        self.is_running = False
+class MeshTopologyAnalyzer:
+    @staticmethod
+    def analyze_mesh(obj):
+        if not obj or obj.type != "MESH":
+            return None
 
-    def draw(self):
-        # Enable alpha blending
-        gpu.state.blend_set("ALPHA")
-        gpu.state.depth_test_set("LESS_EQUAL")
+        mesh_data = {
+            "vertices": [],
+            "colors": [],
+        }
 
-        self.shader.bind()
-
-        # Get the active object
-        obj = bpy.context.active_object
-
-        if obj and obj.type == "MESH":
-            # Update the batch for the current object
-            self.create_batch(obj)
-
-            # Draw the batch
-            self.batch.draw(self.shader)
-
-        # Restore GPU state
-        gpu.state.blend_set("NONE")
-        gpu.state.depth_test_set("NONE")
-
-    def create_batch(self, obj):
-        vertices = []
-        colors = []
-
-        # Iterate through faces
         for face in obj.data.polygons:
-            # Get face normal and create small offset
             offset = face.normal * 0.001
-
-            # Apply offset to vertices
             face_verts = [
                 (obj.matrix_world @ Vector(obj.data.vertices[v].co)) + offset
                 for v in face.vertices
             ]
+
             face_color = (
                 (1, 0, 0, 0.5)
                 if len(face.vertices) == 3
                 else (0, 0, 1, 0.5) if len(face.vertices) == 4 else (0, 1, 0, 0.5)
             )
 
-            # Triangulate the face
             for i in range(1, len(face_verts) - 1):
-                vertices.extend([face_verts[0], face_verts[i], face_verts[i + 1]])
-                colors.extend([face_color, face_color, face_color])
+                mesh_data["vertices"].extend(
+                    [face_verts[0], face_verts[i], face_verts[i + 1]]
+                )
+                mesh_data["colors"].extend([face_color, face_color, face_color])
 
+        return mesh_data
+
+
+class GPUDrawer:
+    def __init__(self):
+        self.handle = None
+        self.batch = None
+        self.shader = gpu.shader.from_builtin("SMOOTH_COLOR")
+        self.is_running = False
+        self.mesh_analyzer = None
+        self._timer = None
+
+    def set_mesh_analyzer(self, analyzer):
+        self.mesh_analyzer = analyzer
+
+    def draw(self):
+        gpu.state.blend_set("ALPHA")
+        gpu.state.depth_test_set("LESS_EQUAL")
+
+        self.shader.bind()
+
+        obj = bpy.context.active_object
+        if obj and self.mesh_analyzer:
+            mesh_data = self.mesh_analyzer.analyze_mesh(obj)
+            if mesh_data:
+                self.create_batch(mesh_data)
+                self.batch.draw(self.shader)
+
+        gpu.state.blend_set("NONE")
+        gpu.state.depth_test_set("NONE")
+
+    def create_batch(self, mesh_data):
         self.batch = batch_for_shader(
-            self.shader, "TRIS", {"pos": vertices, "color": colors}
+            self.shader,
+            "TRIS",
+            {"pos": mesh_data["vertices"], "color": mesh_data["colors"]},
         )
 
     def start(self):
@@ -66,16 +77,32 @@ class SimpleTriangleGPU:
             self.handle = bpy.types.SpaceView3D.draw_handler_add(
                 self.draw, (), "WINDOW", "POST_VIEW"
             )
+            # Add timer for continuous updates
+            self._timer = bpy.app.timers.register(self.timer_update, persistent=True)
             self.is_running = True
 
     def stop(self):
         if self.is_running:
             bpy.types.SpaceView3D.draw_handler_remove(self.handle, "WINDOW")
+            if self._timer:
+                bpy.app.timers.unregister(self._timer)
+                self._timer = None
             self.handle = None
-            self.is_running = False
+            self.is_running = True
+
+    def timer_update(self):
+        if self.is_running:
+            # Force viewport update
+            for window in bpy.context.window_manager.windows:
+                for area in window.screen.areas:
+                    if area.type == "VIEW_3D":
+                        area.tag_redraw()
+            return 1 / 60  # Update every 1/60 second
+        return None
 
 
-simple_triangle = SimpleTriangleGPU()
+drawer = GPUDrawer()
+drawer.set_mesh_analyzer(MeshTopologyAnalyzer())
 
 
 class SimpleTriangleOperator(bpy.types.Operator):
@@ -84,10 +111,10 @@ class SimpleTriangleOperator(bpy.types.Operator):
     bl_description = "Toggle the display of a simple triangle in the 3D viewport"
 
     def execute(self, context):
-        if simple_triangle.is_running:
-            simple_triangle.stop()
+        if drawer.is_running:
+            drawer.stop()
         else:
-            simple_triangle.start()
+            drawer.start()
         context.area.tag_redraw()
         return {"FINISHED"}
 
@@ -102,7 +129,7 @@ class SimpleTrianglePanel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         row = layout.row()
-        if simple_triangle.is_running:
+        if drawer.is_running:
             row.operator(
                 SimpleTriangleOperator.bl_idname, text="Hide Triangle", icon="HIDE_ON"
             )
@@ -121,6 +148,6 @@ def register():
 
 
 def unregister():
-    simple_triangle.stop()
+    drawer.stop()
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
