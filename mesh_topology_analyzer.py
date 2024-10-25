@@ -61,28 +61,3 @@ class MeshTopologyAnalyzer:
                         self.ngons.extend(
                             [face_verts[0], face_verts[i], face_verts[i + 1]]
                         )
-
-    def get_visible_data(
-        self, show_tris=True, show_quads=True, show_ngons=True, colors=None
-    ):
-        vertices = []
-        vert_colors = []
-
-        if colors is None:
-            colors = {
-                "tris": (1, 0, 0, 0.5),
-                "quads": (0, 0, 1, 0.5),
-                "ngons": (0, 1, 0, 0.5),
-            }
-
-        if show_tris:
-            vertices.extend(self.tris)
-            vert_colors.extend([colors["tris"]] * len(self.tris))
-        if show_quads:
-            vertices.extend(self.quads)
-            vert_colors.extend([colors["quads"]] * len(self.quads))
-        if show_ngons:
-            vertices.extend(self.ngons)
-            vert_colors.extend([colors["ngons"]] * len(self.ngons))
-
-        return {"vertices": vertices, "colors": vert_colors}
