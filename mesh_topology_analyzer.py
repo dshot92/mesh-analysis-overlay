@@ -44,3 +44,18 @@ class MeshTopologyAnalyzer:
                 ]
                 for i in range(1, len(face_verts) - 1):
                     self.ngons.extend([face_verts[0], face_verts[i], face_verts[i + 1]])
+
+    def analyze_poles(self, obj):
+        self.poles = []
+        for vert in obj.data.vertices:
+            # Get connected edges
+            connected_edges = [
+                e
+                for e in obj.data.edges
+                if vert.index in (e.vertices[0], e.vertices[1])
+            ]
+
+            # Check if vertex is a pole (not 4 edges)
+            if len(connected_edges) > 4:
+                vert_pos = obj.matrix_world @ vert.co
+                self.poles.append(vert_pos)

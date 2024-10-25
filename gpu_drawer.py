@@ -3,6 +3,7 @@ import gpu
 from gpu_extras.batch import batch_for_shader
 from mathutils import Vector
 from .mesh_topology_analyzer import MeshTopologyAnalyzer
+import math
 
 
 class GPUDrawer:
@@ -16,11 +17,30 @@ class GPUDrawer:
         self.show_tris = True
         self.show_quads = True
         self.show_ngons = True
+        self.show_poles = True
+        self.sphere_vertices = self.create_sphere_vertices(radius=0.02, segments=8)
 
     def update_visibility(self):
         self.show_tris = bpy.context.scene.GPU_Topology_Overlay_Properties.show_tris
         self.show_quads = bpy.context.scene.GPU_Topology_Overlay_Properties.show_quads
         self.show_ngons = bpy.context.scene.GPU_Topology_Overlay_Properties.show_ngons
+        self.show_poles = bpy.context.scene.GPU_Topology_Overlay_Properties.show_poles
+
+    def create_sphere_vertices(self, radius=0.02, segments=8):
+        """Create vertices for a low-poly sphere"""
+        vertices = []
+        # Create vertices for a UV sphere
+        for i in range(segments):
+            for j in range(segments):
+                phi = (i * 2 * 3.141592) / segments
+                theta = (j * 3.141592) / segments
+
+                x = radius * math.sin(theta) * math.cos(phi)
+                y = radius * math.sin(theta) * math.sin(phi)
+                z = radius * math.cos(theta)
+
+                vertices.append(Vector((x, y, z)))
+        return vertices
 
     def draw(self):
         gpu.state.blend_set("ALPHA")
@@ -60,6 +80,21 @@ class GPUDrawer:
                 vertex_colors.extend(
                     [tuple(props.ngons_color)] * len(self.mesh_analyzer.ngons)
                 )
+
+            if self.show_poles:
+                self.mesh_analyzer.analyze_poles(obj)
+                shader = gpu.shader.from_builtin("UNIFORM_COLOR")
+                shader.bind()
+                shader.uniform_float("color", props.poles_color)
+
+                gpu.state.point_size_set(props.poles_radius)
+                gpu.state.blend_set("ALPHA")
+
+                with gpu.matrix.push_pop():
+                    batch = batch_for_shader(
+                        shader, "POINTS", {"pos": self.mesh_analyzer.poles}
+                    )
+                    batch.draw(shader)
 
             if vertices:
                 mesh_data = {"vertices": vertices, "colors": vertex_colors}

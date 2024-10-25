@@ -21,6 +21,12 @@ class GPU_Topology_Overlay_Props(bpy.types.PropertyGroup):
         default=True,
         update=lambda self, context: GPUDrawer.update_visibility(),
     )
+    show_poles: bpy.props.BoolProperty(
+        name="Show Poles",
+        description="Show pole indicators",
+        default=True,
+        update=lambda self, context: GPUDrawer.update_visibility(),
+    )
     poly_offset: bpy.props.FloatProperty(
         name="Polygon Offset",
         description="Offset distance for polygon overlays",
@@ -53,6 +59,21 @@ class GPU_Topology_Overlay_Props(bpy.types.PropertyGroup):
         size=4,
         min=0.0,
         max=1.0,
+    )
+    poles_color: bpy.props.FloatVectorProperty(
+        name="Poles Color",
+        subtype="COLOR",
+        default=(1.0, 0.0, 1.0, 0.5),  # Magenta with 0.5 alpha
+        size=4,
+        min=0.0,
+        max=1.0,
+    )
+    poles_radius: bpy.props.FloatProperty(
+        name="Poles Radius",
+        description="Size of pole indicators",
+        default=10.0,
+        min=1.0,
+        max=50.0,
     )
 
 

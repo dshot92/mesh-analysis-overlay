@@ -46,10 +46,17 @@ class GPU_Overlay_Topology_Panel(bpy.types.Panel):
         split.prop(props, "show_ngons", text="N-Gons")
         split.prop(props, "ngons_color", text="")
 
+        # Add after n-gons row
+        row = box.row(align=True)
+        split = row.split(factor=0.7)
+        split.prop(props, "show_poles", text="Poles")
+        split.prop(props, "poles_color", text="")
+
         # Offset settings
         box = layout.box()
         box.label(text="Offset Settings:")
         box.prop(props, "poly_offset", text="Overlay Face Offset")
+        box.prop(props, "poles_radius", text="Pole Radius")
 
 
 classes = (GPU_Overlay_Topology_Panel,)
