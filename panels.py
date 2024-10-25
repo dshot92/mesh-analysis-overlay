@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import bpy
-from .gpu_drawer import GPUDrawer
+from . import gpu_drawer  # Change the import
 
 
 class GPU_Overlay_Topology_Panel(bpy.types.Panel):
@@ -13,20 +13,16 @@ class GPU_Overlay_Topology_Panel(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-
-        drawer = GPUDrawer()
         props = context.scene.GPU_Topology_Overlay_Properties
 
         # Toggle button for overlay
         row = layout.row()
-        if drawer.is_running:
-            row.operator(
-                "view3d.gpu_overlay_topology", text="Hide Overlay", icon="HIDE_ON"
-            )
-        else:
-            row.operator(
-                "view3d.gpu_overlay_topology", text="Show Overlay", icon="HIDE_OFF"
-            )
+        row.operator(
+            "view3d.gpu_overlay_topology",
+            text="GPU Overlay",
+            icon="OVERLAY",
+            depress=gpu_drawer.drawer.is_running,
+        )
 
         # Polygon type toggles with color pickers
         box = layout.box()
