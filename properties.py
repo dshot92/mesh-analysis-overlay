@@ -5,10 +5,10 @@
 # ----------------------------------------------------------
 
 import bpy
-from .gpu_drawer import GPUDrawer
 
 
-class GPU_Topology_Overlay_Props(bpy.types.PropertyGroup):
+
+class Mesh_Topology_Overlay_Props(bpy.types.PropertyGroup):
 
     # VISIBILITY TOGGLES
     show_tris: bpy.props.BoolProperty(
@@ -110,10 +110,7 @@ class GPU_Topology_Overlay_Props(bpy.types.PropertyGroup):
         name="Overlay Face Offset",
         description="Distance to offset the overlay faces",
         default=0.001,
-        # min=0.0,
-        # max=1.0,
         precision=4,
-        # update=lambda self, context: GPUDrawer.update_visibility(),  # Fix the callback
     )
     overlay_vertex_radius: bpy.props.FloatProperty(
         name="Overlay Vertex Radius",
@@ -132,17 +129,17 @@ class GPU_Topology_Overlay_Props(bpy.types.PropertyGroup):
     )
 
 
-classes = (GPU_Topology_Overlay_Props,)
+classes = (Mesh_Topology_Overlay_Props,)
 
 
 def register():
     for bl_class in classes:
         bpy.utils.register_class(bl_class)
-    bpy.types.Scene.GPU_Topology_Overlay_Properties = bpy.props.PointerProperty(
-        type=GPU_Topology_Overlay_Props
+    bpy.types.Scene.Mesh_Topology_Overlay_Properties = bpy.props.PointerProperty(
+        type=Mesh_Topology_Overlay_Props
     )
 
 
 def unregister():
-    bpy.utils.unregister_class(GPU_Topology_Overlay_Props)
-    del bpy.types.Scene.GPU_Topology_Overlay_Properties
+    bpy.utils.unregister_class(Mesh_Topology_Overlay_Props)
+    del bpy.types.Scene.Mesh_Topology_Overlay_Properties

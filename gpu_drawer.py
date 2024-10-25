@@ -26,7 +26,7 @@ class GPUDrawer:
         self.show_non_manifold_verts = True
 
     def update_visibility(self):
-        props = bpy.context.scene.GPU_Topology_Overlay_Properties
+        props = bpy.context.scene.Mesh_Topology_Overlay_Properties
         self.show_tris = props.show_tris
         self.show_quads = props.show_quads
         self.show_ngons = props.show_ngons
@@ -37,7 +37,7 @@ class GPUDrawer:
 
     def draw(self):
 
-        props = bpy.context.scene.GPU_Topology_Overlay_Properties
+        props = bpy.context.scene.Mesh_Topology_Overlay_Properties
         self.update_visibility()
 
         obj = bpy.context.active_object
@@ -102,7 +102,7 @@ class GPUDrawer:
                     obj.update_from_editmode()
 
                 # Analyze mesh
-                props = scene.GPU_Topology_Overlay_Properties
+                props = scene.Mesh_Topology_Overlay_Properties
                 self.mesh_analyzer.analyze_mesh(obj, props.overlay_face_offset)
 
                 # Redraw viewport
@@ -150,7 +150,7 @@ class GPUDrawer:
             # Force initial analysis
             obj = bpy.context.active_object
             if obj and obj.type == "MESH":
-                props = bpy.context.scene.GPU_Topology_Overlay_Properties
+                props = bpy.context.scene.Mesh_Topology_Overlay_Properties
                 self.mesh_analyzer.analyze_mesh(obj, props.overlay_face_offset)
                 # Force viewport redraw
                 for window in bpy.context.window_manager.windows:
@@ -167,40 +167,3 @@ class GPUDrawer:
                 bpy.app.handlers.depsgraph_update_post.remove(self.depsgraph_update)
             self.handle = None
             self.is_running = False
-
-
-# Update the drawer instance
-drawer = GPUDrawer()
-
-
-class GPU_Overlay_Topology(bpy.types.Operator):
-    bl_idname = "view3d.gpu_overlay_topology"
-    bl_label = "Toggle GPU Overlay Topology"
-    bl_description = "Toggle the display of the GPU Overlay Topology in the 3D viewport"
-
-    def execute(self, context):
-        if drawer.is_running:
-            drawer.stop()
-        else:
-            drawer.start()
-        # Force panel refresh
-        for area in context.screen.areas:
-            if area.type == "VIEW_3D":
-                area.tag_redraw()
-        return {"FINISHED"}
-
-
-classes = (GPU_Overlay_Topology,)
-
-
-def register():
-    for cls in classes:
-        bpy.utils.register_class(cls)
-
-
-def unregister():
-    if drawer:
-        drawer.stop()
-
-    for cls in reversed(classes):
-        bpy.utils.unregister_class(cls)

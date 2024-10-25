@@ -7,18 +7,18 @@
 
 import importlib
 
-from . import gpu_drawer, panels, properties
+from . import operators, panels, properties
 
 modules = (
     properties,
-    gpu_drawer,
+    operators,
     panels,
 )
 
 if "bpy" in locals():
     importlib.reload(properties)
+    importlib.reload(operators)
     importlib.reload(panels)
-    importlib.reload(gpu_drawer)
 
 
 def register():
