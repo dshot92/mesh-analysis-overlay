@@ -7,25 +7,21 @@ class GPU_Topology_Overlay_Props(bpy.types.PropertyGroup):
         name="Show Triangles",
         description="Show triangle overlays",
         default=True,
-        update=lambda self, context: GPUDrawer.update_visibility(),
     )
     show_quads: bpy.props.BoolProperty(
         name="Show Quads",
         description="Show quad overlays",
         default=True,
-        update=lambda self, context: GPUDrawer.update_visibility(),
     )
     show_ngons: bpy.props.BoolProperty(
         name="Show N-gons",
         description="Show n-gon overlays",
         default=True,
-        update=lambda self, context: GPUDrawer.update_visibility(),
     )
     show_poles: bpy.props.BoolProperty(
         name="Show Poles",
         description="Show pole indicators",
         default=True,
-        update=lambda self, context: GPUDrawer.update_visibility(),
     )
     poly_offset: bpy.props.FloatProperty(
         name="Polygon Offset",
