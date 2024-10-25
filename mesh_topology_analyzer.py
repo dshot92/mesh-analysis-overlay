@@ -47,7 +47,6 @@ class MeshTopologyAnalyzer:
         self.ngons = []
         bm = bmesh.new()
         bm.from_mesh(obj.data)
-        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
 
         # Get only ngon faces and their normals
         ngon_faces = [f for f in bm.faces if len(f.verts) > 4]
