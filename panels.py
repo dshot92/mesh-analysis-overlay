@@ -58,11 +58,26 @@ class GPU_Overlay_Topology_Panel(bpy.types.Panel):
         split.prop(props, "show_singles", text="Single Vertices")
         split.prop(props, "singles_color", text="")
 
+        # Replace the single non-manifold row with two separate rows
+        row = box.row(align=True)
+        split = row.split(factor=0.7)
+        split.prop(props, "show_non_manifold_edges", text="Non-Manifold Edges")
+        split.prop(props, "non_manifold_edges_color", text="")
+
+        row = box.row(align=True)
+        split = row.split(factor=0.7)
+        split.prop(props, "show_non_manifold_verts", text="Non-Manifold Vertices")
+        split.prop(props, "non_manifold_verts_color", text="")
+
+        # Add after the non-manifold edges color control
+        row = box.row(align=True)
+
         # Offset settings
         box = layout.box()
-        box.label(text="Offset Settings:")
-        box.prop(props, "poly_offset", text="Overlay Face Offset")
-        box.prop(props, "poles_radius", text="Overlay Vertex Radius")
+        box.label(text="Overlay Settings:")
+        box.prop(props, "overlay_face_offset", text="Overlay Face Offset")
+        box.prop(props, "overlay_vertex_radius", text="Overlay Vertex Radius")
+        box.prop(props, "overlay_edge_width", text="Overlay Edge Width")
 
 
 classes = (GPU_Overlay_Topology_Panel,)

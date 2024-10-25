@@ -19,6 +19,8 @@ class GPUDrawer:
         self.show_ngons = True
         self.show_poles = True
         self.show_singles = True
+        self.show_non_manifold_edges = True
+        self.show_non_manifold_verts = True
         self.sphere_vertices = self.create_sphere_vertices(radius=0.02, segments=8)
 
     def update_visibility(self):
@@ -28,6 +30,12 @@ class GPUDrawer:
         self.show_poles = bpy.context.scene.GPU_Topology_Overlay_Properties.show_poles
         self.show_singles = (
             bpy.context.scene.GPU_Topology_Overlay_Properties.show_singles
+        )
+        self.show_non_manifold_edges = (
+            bpy.context.scene.GPU_Topology_Overlay_Properties.show_non_manifold_edges
+        )
+        self.show_non_manifold_verts = (
+            bpy.context.scene.GPU_Topology_Overlay_Properties.show_non_manifold_verts
         )
 
     def create_sphere_vertices(self, radius=0.02, segments=8):
@@ -58,11 +66,10 @@ class GPUDrawer:
             if obj.mode == "EDIT":
                 obj.update_from_editmode()
 
-            # Collect faces (Tris, Quads, N-gons)
+            # Collect faces
             faces = []
             face_colors = []
-            offset_value = props.poly_offset
-
+            offset_value = props.overlay_face_offset
             if self.show_tris:
                 self.mesh_analyzer.analyze_tris(obj, offset_value)
                 faces.extend(self.mesh_analyzer.tris)
@@ -84,7 +91,7 @@ class GPUDrawer:
                     [tuple(props.ngons_color)] * len(self.mesh_analyzer.ngons)
                 )
 
-            # Collect vertices (Poles and Singles)
+            # Collect vertices
             vertices = []
             vertex_colors = []
             if self.show_poles:
@@ -98,8 +105,26 @@ class GPUDrawer:
                 vertex_colors.extend(
                     [tuple(props.singles_color)] * len(self.mesh_analyzer.singles)
                 )
+            if self.show_non_manifold_verts:
+                self.mesh_analyzer.analyze_non_manifold_verts(obj)
+                vertices.extend(self.mesh_analyzer.non_manifold_verts)
+                vertex_colors.extend(
+                    [tuple(props.non_manifold_verts_color)]
+                    * len(self.mesh_analyzer.non_manifold_verts)
+                )
 
-            # Draw faces (Tris, Quads, N-gons)
+            # Collect edges
+            edges = []
+            edge_colors = []
+            if self.show_non_manifold_edges:
+                self.mesh_analyzer.analyze_non_manifold_edges(obj)
+                edges.extend(self.mesh_analyzer.non_manifold_edges)
+                edge_colors.extend(
+                    [tuple(props.non_manifold_edges_color)]
+                    * len(self.mesh_analyzer.non_manifold_edges)
+                )
+
+            # Draw faces
             if faces:
                 vertex_shader = gpu.shader.from_builtin("SMOOTH_COLOR")
                 vertex_shader.bind()
@@ -107,17 +132,26 @@ class GPUDrawer:
                 self.create_batch(mesh_data, "TRIS")
                 self.batch.draw(vertex_shader)
 
-            # Draw vertices (Poles and Singles)
+            # Draw vertices
             if vertices:
                 vertex_shader = gpu.shader.from_builtin("SMOOTH_COLOR")
                 vertex_shader.bind()
-                gpu.state.point_size_set(props.poles_radius)
+                gpu.state.point_size_set(props.overlay_vertex_radius)
                 mesh_data = {"vertices": vertices, "colors": vertex_colors}
                 self.create_batch(mesh_data, "POINTS")
                 self.batch.draw(vertex_shader)
 
-        gpu.state.blend_set("NONE")
-        gpu.state.depth_test_set("NONE")
+            # Draw edges
+            if edges:
+                shader_lines = gpu.shader.from_builtin("SMOOTH_COLOR")
+                shader_lines.bind()
+                gpu.state.line_width_set(props.overlay_edge_width)
+                mesh_data = {"vertices": edges, "colors": edge_colors}
+                self.create_batch(mesh_data, "LINES")
+                self.batch.draw(shader_lines)
+
+            gpu.state.blend_set("NONE")
+            gpu.state.depth_test_set("NONE")
 
     def create_batch(self, mesh_data, primitive="TRIS"):
         self.batch = batch_for_shader(

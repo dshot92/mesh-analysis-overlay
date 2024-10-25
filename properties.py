@@ -3,6 +3,8 @@ from .gpu_drawer import GPUDrawer
 
 
 class GPU_Topology_Overlay_Props(bpy.types.PropertyGroup):
+
+    # VISIBILITY TOGGLES
     show_tris: bpy.props.BoolProperty(
         name="Show Triangles",
         description="Show triangle overlays",
@@ -23,15 +25,23 @@ class GPU_Topology_Overlay_Props(bpy.types.PropertyGroup):
         description="Show pole indicators",
         default=True,
     )
-    poly_offset: bpy.props.FloatProperty(
-        name="Polygon Offset",
-        description="Offset distance for polygon overlays",
-        default=0.001,
-        min=0.0,
-        max=1.0,
-        precision=4,
-        # update=lambda self, context: GPUDrawer.update_visibility(),  # Fix the callback
+    show_singles: bpy.props.BoolProperty(
+        name="Show Singles",
+        description="Show single vertex indicators",
+        default=True,
     )
+    show_non_manifold_verts: bpy.props.BoolProperty(
+        name="Show Non-Manifold Vertices",
+        description="Show non-manifold vertices",
+        default=True,
+    )
+    show_non_manifold_edges: bpy.props.BoolProperty(
+        name="Show Non-Manifold Edges",
+        description="Show non-manifold edges",
+        default=True,
+    )
+
+    # COLORS
     tris_color: bpy.props.FloatVectorProperty(
         name="Triangles Color",
         subtype="COLOR",
@@ -64,18 +74,6 @@ class GPU_Topology_Overlay_Props(bpy.types.PropertyGroup):
         min=0.0,
         max=1.0,
     )
-    poles_radius: bpy.props.FloatProperty(
-        name="Poles Radius",
-        description="Size of pole indicators",
-        default=10.0,
-        min=1.0,
-        max=50.0,
-    )
-    show_singles: bpy.props.BoolProperty(
-        name="Show Singles",
-        description="Show single vertex indicators",
-        default=True,
-    )
     singles_color: bpy.props.FloatVectorProperty(
         name="Singles Color",
         subtype="COLOR",
@@ -83,6 +81,48 @@ class GPU_Topology_Overlay_Props(bpy.types.PropertyGroup):
         size=4,
         min=0.0,
         max=1.0,
+    )
+    non_manifold_verts_color: bpy.props.FloatVectorProperty(
+        name="Non-Manifold Vertices Color",
+        subtype="COLOR",
+        default=(1.0, 0.0, 0.5, 0.5),  # Pink with 0.5 alpha
+        size=4,
+        min=0.0,
+        max=1.0,
+    )
+    non_manifold_edges_color: bpy.props.FloatVectorProperty(
+        name="Non-Manifold Edges Color",
+        subtype="COLOR",
+        default=(1.0, 0.5, 0.0, 0.5),  # Orange with 0.5 alpha
+        size=4,
+        min=0.0,
+        max=1.0,
+    )
+
+    # SETTINGS VALUES
+    overlay_face_offset: bpy.props.FloatProperty(
+        name="Overlay Face Offset",
+        description="Distance to offset the overlay faces",
+        default=0.0001,
+        min=0.0,
+        max=1.0,
+        precision=5,
+        # update=lambda self, context: GPUDrawer.update_visibility(),  # Fix the callback
+    )
+    overlay_vertex_radius: bpy.props.FloatProperty(
+        name="Overlay Vertex Radius",
+        description="Size of the overlay vertex indicators",
+        default=10.0,
+        min=1.0,
+        max=50.0,
+    )
+
+    overlay_edge_width: bpy.props.FloatProperty(
+        name="Overlay Edge Width",
+        description="Width of the overlay edge indicators",
+        default=5.0,
+        min=1.0,
+        max=10.0,
     )
 
 

@@ -10,6 +10,8 @@ class MeshTopologyAnalyzer:
         self.ngons = []
         self.poles = []
         self.singles = []
+        self.non_manifold_edges = []
+        self.non_manifold_verts = []
 
     def analyze_tris(self, obj, offset_value):
         self.tris = []
@@ -85,3 +87,29 @@ class MeshTopologyAnalyzer:
             if len(connected_edges) == 0:
                 vert_pos = obj.matrix_world @ vert.co
                 self.singles.append(vert_pos)
+
+    def analyze_non_manifold_edges(self, obj):
+        self.non_manifold_edges = []
+        bm = bmesh.new()
+        bm.from_mesh(obj.data)
+        
+        for e in bm.edges:
+            if not e.is_manifold:
+                # Store both vertices of the edge for line drawing
+                v1 = obj.matrix_world @ e.verts[0].co
+                v2 = obj.matrix_world @ e.verts[1].co
+                self.non_manifold_edges.extend([v1, v2])  # Store as pairs for LINE primitive
+        
+        bm.free()
+
+    def analyze_non_manifold_verts(self, obj):
+        self.non_manifold_verts = []
+        bm = bmesh.new()
+        bm.from_mesh(obj.data)
+
+        for v in bm.verts:
+            if not v.is_manifold:
+                vert_pos = obj.matrix_world @ v.co
+                self.non_manifold_verts.append(vert_pos)
+
+        bm.free()
