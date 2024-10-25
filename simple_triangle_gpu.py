@@ -14,29 +14,53 @@ class MeshTopologyAnalyzer:
         if not obj or obj.type != "MESH":
             return
 
+        # Get offset from scene property
+        offset_value = bpy.context.scene.poly_offset
+
         # Clear previous data
         self.tris = []
         self.quads = []
         self.ngons = []
 
-        for face in obj.data.polygons:
-            vert_count = len(face.vertices)
-            offset = face.normal * 0.001
-            face_verts = [
-                (obj.matrix_world @ Vector(obj.data.vertices[v].co)) + offset
-                for v in face.vertices
-            ]
+        # Process each type only if visible
+        if bpy.context.scene.show_tris:
+            for face in obj.data.polygons:
+                if len(face.vertices) == 3:
+                    offset = face.normal * offset_value
+                    face_verts = [
+                        (obj.matrix_world @ Vector(obj.data.vertices[v].co)) + offset
+                        for v in face.vertices
+                    ]
+                    for i in range(1, len(face_verts) - 1):
+                        self.tris.extend(
+                            [face_verts[0], face_verts[i], face_verts[i + 1]]
+                        )
 
-            # Store in appropriate category
-            if vert_count == 3:
-                target_data = self.tris
-            elif vert_count == 4:
-                target_data = self.quads
-            else:
-                target_data = self.ngons
+        if bpy.context.scene.show_quads:
+            for face in obj.data.polygons:
+                if len(face.vertices) == 4:
+                    offset = face.normal * offset_value
+                    face_verts = [
+                        (obj.matrix_world @ Vector(obj.data.vertices[v].co)) + offset
+                        for v in face.vertices
+                    ]
+                    for i in range(1, len(face_verts) - 1):
+                        self.quads.extend(
+                            [face_verts[0], face_verts[i], face_verts[i + 1]]
+                        )
 
-            for i in range(1, len(face_verts) - 1):
-                target_data.extend([face_verts[0], face_verts[i], face_verts[i + 1]])
+        if bpy.context.scene.show_ngons:
+            for face in obj.data.polygons:
+                if len(face.vertices) > 4:
+                    offset = face.normal * offset_value
+                    face_verts = [
+                        (obj.matrix_world @ Vector(obj.data.vertices[v].co)) + offset
+                        for v in face.vertices
+                    ]
+                    for i in range(1, len(face_verts) - 1):
+                        self.ngons.extend(
+                            [face_verts[0], face_verts[i], face_verts[i + 1]]
+                        )
 
     def get_visible_data(
         self, show_tris=True, show_quads=True, show_ngons=True, colors=None
@@ -210,6 +234,11 @@ class SimpleTrianglePanel(bpy.types.Panel):
         split.prop(context.scene, "show_ngons", text="N-Gons")
         split.prop(context.scene, "ngons_color", text="")
 
+        # Add offset slider after the color boxes
+        box = layout.box()
+        box.label(text="Offset Settings:")
+        box.prop(context.scene, "poly_offset", text="Overlay Face Offset")
+
 
 classes = (SimpleTriangleOperator, SimpleTrianglePanel)
 
@@ -258,6 +287,42 @@ def register():
     )
 
 
+def register():
+    for cls in classes:
+        bpy.utils.register_class(cls)
+
+    # Register properties
+    bpy.types.Scene.show_tris = bpy.props.BoolProperty(
+        name="Show Triangles",
+        description="Show triangle overlays",
+        default=True,
+        update=lambda self, context: update_visibility(),
+    )
+    bpy.types.Scene.show_quads = bpy.props.BoolProperty(
+        name="Show Quads",
+        description="Show quad overlays",
+        default=True,
+        update=lambda self, context: update_visibility(),
+    )
+    bpy.types.Scene.show_ngons = bpy.props.BoolProperty(
+        name="Show N-gons",
+        description="Show n-gon overlays",
+        default=True,
+        update=lambda self, context: update_visibility(),
+    )
+
+    # Add offset property
+    bpy.types.Scene.poly_offset = bpy.props.FloatProperty(
+        name="Polygon Offset",
+        description="Offset distance for polygon overlays",
+        default=0.001,
+        min=0.0,
+        max=1.0,
+        precision=4,
+        update=lambda self, context: update_visibility(),
+    )
+
+
 def unregister():
     if drawer:
         drawer.stop()
@@ -266,6 +331,7 @@ def unregister():
     del bpy.types.Scene.show_tris
     del bpy.types.Scene.show_quads
     del bpy.types.Scene.show_ngons
+    del bpy.types.Scene.poly_offset
 
     for cls in reversed(classes):
         try:
