@@ -5,45 +5,63 @@ from mathutils import Vector
 
 
 class MeshTopologyAnalyzer:
-    @staticmethod
-    def analyze_mesh(obj, show_tris=True, show_quads=True, show_ngons=True):
-        if not obj or obj.type != "MESH":
-            return None
+    def __init__(self):
+        self.tris = []
+        self.quads = []
+        self.ngons = []
 
-        mesh_data = {
-            "vertices": [],
-            "colors": [],
-        }
+    def analyze_mesh(self, obj):
+        if not obj or obj.type != "MESH":
+            return
+
+        # Clear previous data
+        self.tris = []
+        self.quads = []
+        self.ngons = []
 
         for face in obj.data.polygons:
             vert_count = len(face.vertices)
-            # Skip faces based on visibility settings
-            if (
-                (vert_count == 3 and not show_tris)
-                or (vert_count == 4 and not show_quads)
-                or (vert_count > 4 and not show_ngons)
-            ):
-                continue
-
             offset = face.normal * 0.001
             face_verts = [
                 (obj.matrix_world @ Vector(obj.data.vertices[v].co)) + offset
                 for v in face.vertices
             ]
 
-            face_color = (
-                (1, 0, 0, 0.5)
-                if vert_count == 3
-                else (0, 0, 1, 0.5) if vert_count == 4 else (0, 1, 0, 0.5)
-            )
+            # Store in appropriate category
+            if vert_count == 3:
+                target_data = self.tris
+            elif vert_count == 4:
+                target_data = self.quads
+            else:
+                target_data = self.ngons
 
             for i in range(1, len(face_verts) - 1):
-                mesh_data["vertices"].extend(
-                    [face_verts[0], face_verts[i], face_verts[i + 1]]
-                )
-                mesh_data["colors"].extend([face_color, face_color, face_color])
+                target_data.extend([face_verts[0], face_verts[i], face_verts[i + 1]])
 
-        return mesh_data
+    def get_visible_data(
+        self, show_tris=True, show_quads=True, show_ngons=True, colors=None
+    ):
+        vertices = []
+        vert_colors = []
+
+        if colors is None:
+            colors = {
+                "tris": (1, 0, 0, 0.5),
+                "quads": (0, 0, 1, 0.5),
+                "ngons": (0, 1, 0, 0.5),
+            }
+
+        if show_tris:
+            vertices.extend(self.tris)
+            vert_colors.extend([colors["tris"]] * len(self.tris))
+        if show_quads:
+            vertices.extend(self.quads)
+            vert_colors.extend([colors["quads"]] * len(self.quads))
+        if show_ngons:
+            vertices.extend(self.ngons)
+            vert_colors.extend([colors["ngons"]] * len(self.ngons))
+
+        return {"vertices": vertices, "colors": vert_colors}
 
 
 class GPUDrawer:
@@ -64,18 +82,30 @@ class GPUDrawer:
     def draw(self):
         gpu.state.blend_set("ALPHA")
         gpu.state.depth_test_set("LESS_EQUAL")
-
         self.shader.bind()
 
         obj = bpy.context.active_object
         if obj and self.mesh_analyzer:
-            bpy.context.view_layer.update()  # Force update
+            bpy.context.view_layer.update()
             if obj.mode == "EDIT":
                 obj.update_from_editmode()
-            mesh_data = self.mesh_analyzer.analyze_mesh(
-                obj, self.show_tris, self.show_quads, self.show_ngons
+
+            # Get current colors from scene properties
+            colors = {
+                "tris": tuple(bpy.context.scene.tris_color),  # Convert to tuple
+                "quads": tuple(bpy.context.scene.quads_color),
+                "ngons": tuple(bpy.context.scene.ngons_color),
+            }
+
+            self.mesh_analyzer.analyze_mesh(obj)
+            mesh_data = self.mesh_analyzer.get_visible_data(
+                self.show_tris,
+                self.show_quads,
+                self.show_ngons,
+                colors=colors,  # Pass the current colors
             )
-            if mesh_data:
+
+            if mesh_data["vertices"]:
                 self.create_batch(mesh_data)
                 self.batch.draw(self.shader)
 
@@ -158,15 +188,27 @@ class SimpleTrianglePanel(bpy.types.Panel):
                 SimpleTriangleOperator.bl_idname, text="Show Overlay", icon="HIDE_OFF"
             )
 
-        # Polygon type toggles
+        # Polygon type toggles with color pickers
         box = layout.box()
         box.label(text="Show Polygons:")
-        row = box.row()
-        row.prop(context.scene, "show_tris", text="Triangles", toggle=True)
-        row = box.row()
-        row.prop(context.scene, "show_quads", text="Quads", toggle=True)
-        row = box.row()
-        row.prop(context.scene, "show_ngons", text="N-Gons", toggle=True)
+
+        # Triangles row
+        row = box.row(align=True)
+        split = row.split(factor=0.7)
+        split.prop(context.scene, "show_tris", text="Triangles")
+        split.prop(context.scene, "tris_color", text="")
+
+        # Quads row
+        row = box.row(align=True)
+        split = row.split(factor=0.7)
+        split.prop(context.scene, "show_quads", text="Quads")
+        split.prop(context.scene, "quads_color", text="")
+
+        # N-gons row
+        row = box.row(align=True)
+        split = row.split(factor=0.7)
+        split.prop(context.scene, "show_ngons", text="N-Gons")
+        split.prop(context.scene, "ngons_color", text="")
 
 
 classes = (SimpleTriangleOperator, SimpleTrianglePanel)
@@ -185,6 +227,34 @@ def register():
     )
     bpy.types.Scene.show_ngons = bpy.props.BoolProperty(
         default=True, update=lambda self, context: update_visibility()
+    )
+
+    bpy.types.Scene.tris_color = bpy.props.FloatVectorProperty(
+        name="Triangles Color",
+        subtype="COLOR_GAMMA",  # This gives better color picking
+        default=(1.0, 0.0, 0.0, 0.5),
+        min=0.0,
+        max=1.0,
+        size=4,
+        update=lambda self, context: update_visibility(),
+    )
+    bpy.types.Scene.quads_color = bpy.props.FloatVectorProperty(
+        name="Quads Color",
+        subtype="COLOR_GAMMA",
+        default=(0.0, 0.0, 1.0, 0.5),
+        min=0.0,
+        max=1.0,
+        size=4,
+        update=lambda self, context: update_visibility(),
+    )
+    bpy.types.Scene.ngons_color = bpy.props.FloatVectorProperty(
+        name="N-Gons Color",
+        subtype="COLOR_GAMMA",
+        default=(0.0, 1.0, 0.0, 0.5),
+        min=0.0,
+        max=1.0,
+        size=4,
+        update=lambda self, context: update_visibility(),
     )
 
 
