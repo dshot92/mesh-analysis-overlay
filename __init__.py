@@ -7,17 +7,17 @@
 
 import importlib
 
-from . import panels, simple_triangle_gpu
+from . import gpu_drawer, panels, properties
 
-#
 modules = (
-    simple_triangle_gpu,
+    properties,
+    gpu_drawer,
     panels,
 )
 
 if "bpy" in locals():
     importlib.reload(panels)
-    importlib.reload(simple_triangle_gpu)
+    importlib.reload(gpu_drawer)
 
 
 def register():
