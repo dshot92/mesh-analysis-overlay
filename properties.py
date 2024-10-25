@@ -109,10 +109,10 @@ class GPU_Topology_Overlay_Props(bpy.types.PropertyGroup):
     overlay_face_offset: bpy.props.FloatProperty(
         name="Overlay Face Offset",
         description="Distance to offset the overlay faces",
-        default=0.0001,
-        min=0.0,
-        max=1.0,
-        precision=5,
+        default=0.001,
+        # min=0.0,
+        # max=1.0,
+        precision=4,
         # update=lambda self, context: GPUDrawer.update_visibility(),  # Fix the callback
     )
     overlay_vertex_radius: bpy.props.FloatProperty(
