@@ -61,29 +61,32 @@ class MeshTopologyAnalyzer:
                 self.non_manifold_edges_data.extend([v1, v2])
 
         # Analyze faces
-        tris_to_process = []
         quads_to_process = []
         ngons_to_process = []
 
         for face in bm.faces:
             if len(face.verts) == 3:  # Triangle
-                tris_to_process.append(face)
+                verts = [matrix_world @ v.co for v in face.verts]
+                normal = matrix_world.to_3x3() @ face.normal
+                self.tris_data.extend(verts)
+                self.tris_normals.extend([normal] * 3)
             elif len(face.verts) == 4:  # Quad
                 quads_to_process.append(face)
             elif len(face.verts) > 4:  # N-gon
                 ngons_to_process.append(face)
 
-        # Process triangles
-        for face in tris_to_process:
-            verts = [matrix_world @ v.co for v in face.verts]
-            normal = matrix_world.to_3x3() @ face.normal
-            self.tris_data.extend(verts)
-            self.tris_normals.extend([normal] * 3)
-
         # Process quads: triangulate
         for face in quads_to_process:
             face_copy = face.copy()
-            result = bmesh.ops.triangulate(bm, faces=[face_copy], quad_method="BEAUTY")
+            result = bmesh.ops.triangulate(
+                # bm, faces=[face_copy], quad_method="SHORT_EDGE"
+                # bm, faces=[face_copy], quad_method="BEAUTY",
+                # bm, faces=[face_copy], quad_method="FIXED",
+                # bm, faces=[face_copy], quad_method="LONG_EDGE",
+                bm,
+                faces=[face_copy],
+                quad_method="ALTERNATE",
+            )
             for new_face in result["faces"]:
                 normal = matrix_world.to_3x3() @ face.normal
                 new_verts = [matrix_world @ v.co for v in new_face.verts]
