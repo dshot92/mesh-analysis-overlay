@@ -1,3 +1,9 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# ----------------------------------------------------------
+# Author: Daniele Stochino (dshot92)
+# ----------------------------------------------------------
+
 import bpy
 from mathutils import Vector
 import bmesh
@@ -92,14 +98,16 @@ class MeshTopologyAnalyzer:
         self.non_manifold_edges = []
         bm = bmesh.new()
         bm.from_mesh(obj.data)
-        
+
         for e in bm.edges:
             if not e.is_manifold:
                 # Store both vertices of the edge for line drawing
                 v1 = obj.matrix_world @ e.verts[0].co
                 v2 = obj.matrix_world @ e.verts[1].co
-                self.non_manifold_edges.extend([v1, v2])  # Store as pairs for LINE primitive
-        
+                self.non_manifold_edges.extend(
+                    [v1, v2]
+                )  # Store as pairs for LINE primitive
+
         bm.free()
 
     def analyze_non_manifold_verts(self, obj):

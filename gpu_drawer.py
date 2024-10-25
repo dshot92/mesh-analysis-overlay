@@ -1,3 +1,9 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# ----------------------------------------------------------
+# Author: Daniele Stochino (dshot92)
+# ----------------------------------------------------------
+
 import bpy
 import gpu
 from gpu_extras.batch import batch_for_shader

@@ -1,3 +1,9 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# ----------------------------------------------------------
+# Author: Daniele Stochino (dshot92)
+# ----------------------------------------------------------
+
 import bpy
 from .gpu_drawer import GPUDrawer
 
