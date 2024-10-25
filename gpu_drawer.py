@@ -13,20 +13,14 @@ class GPUDrawer:
         self.is_running = False
         self._timer = None
         self.mesh_analyzer = MeshTopologyAnalyzer()
-        # Add visibility flags
         self.show_tris = True
         self.show_quads = True
         self.show_ngons = True
 
     def update_visibility(self):
-        if hasattr(bpy.context.scene, "GPU_Topology_Overlay_Properties"):
-            self.show_tris = bpy.context.scene.GPU_Topology_Overlay_Properties.show_tris
-            self.show_quads = (
-                bpy.context.scene.GPU_Topology_Overlay_Properties.show_quads
-            )
-            self.show_ngons = (
-                bpy.context.scene.GPU_Topology_Overlay_Properties.show_ngons
-            )
+        self.show_tris = bpy.context.scene.GPU_Topology_Overlay_Properties.show_tris
+        self.show_quads = bpy.context.scene.GPU_Topology_Overlay_Properties.show_quads
+        self.show_ngons = bpy.context.scene.GPU_Topology_Overlay_Properties.show_ngons
 
     def draw(self):
         gpu.state.blend_set("ALPHA")
