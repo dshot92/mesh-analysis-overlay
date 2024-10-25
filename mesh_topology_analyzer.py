@@ -5,118 +5,77 @@
 # ----------------------------------------------------------
 
 import bpy
-from mathutils import Vector
 import bmesh
 
 
 class MeshTopologyAnalyzer:
     def __init__(self):
-        self.tris = []
-        self.quads = []
-        self.ngons = []
-        self.poles = []
-        self.singles = []
-        self.non_manifold_edges = []
-        self.non_manifold_verts = []
+        self.clear_data()
 
-    def analyze_tris(self, obj, offset_value):
-        self.tris = []
-        for face in obj.data.polygons:
-            if len(face.vertices) == 3:
-                offset = face.normal * offset_value
-                face_verts = [
-                    (obj.matrix_world @ Vector(obj.data.vertices[v].co)) + offset
-                    for v in face.vertices
-                ]
-                for i in range(1, len(face_verts) - 1):
-                    self.tris.extend([face_verts[0], face_verts[i], face_verts[i + 1]])
+    def clear_data(self):
+        self.tris_data = []
+        self.tris_normals = []
+        self.quads_data = []
+        self.quads_normals = []
+        self.ngons_data = []
+        self.ngons_normals = []
+        self.poles_data = []
+        self.singles_data = []
+        self.non_manifold_edges_data = []
+        self.non_manifold_verts_data = []
 
-    def analyze_quads(self, obj, offset_value):
-        self.quads = []
-        for face in obj.data.polygons:
-            if len(face.vertices) == 4:
-                offset = face.normal * offset_value
-                face_verts = [
-                    (obj.matrix_world @ Vector(obj.data.vertices[v].co)) + offset
-                    for v in face.vertices
-                ]
-                for i in range(1, len(face_verts) - 1):
-                    self.quads.extend([face_verts[0], face_verts[i], face_verts[i + 1]])
+    def analyze_mesh(self, obj, offset):
+        mesh = obj.data
+        matrix_world = obj.matrix_world
 
-    def analyze_ngons(self, obj, offset_value):
-        self.ngons = []
+        # Create BMesh
         bm = bmesh.new()
-        bm.from_mesh(obj.data)
+        bm.from_mesh(mesh)
+        bm.faces.ensure_lookup_table()
+        bm.verts.ensure_lookup_table()
+        bm.edges.ensure_lookup_table()
 
-        # Get only ngon faces and their normals
-        ngon_faces = [f for f in bm.faces if len(f.verts) > 4]
+        # Clear previous data
+        self.clear_data()
 
-        # Triangulate only ngons
-        result = bmesh.ops.triangulate(bm, faces=ngon_faces, ngon_method="EAR_CLIP")
+        # Analyze faces
+        for face in bm.faces:  # Use BMesh faces instead of mesh polygons
+            verts = [matrix_world @ v.co for v in face.verts]
+            normal = matrix_world.to_3x3() @ face.normal
 
-        # Get the new triangulated faces from the result
-        for new_face in result["faces"]:
-            offset = new_face.normal * offset_value
-            for v in new_face.verts:
-                vert_pos = (obj.matrix_world @ Vector(v.co)) + offset
-                self.ngons.append(vert_pos)
+            if len(face.verts) == 3:  # Triangle
+                self.tris_data.extend(verts)
+                self.tris_normals.extend([normal] * 3)
+            elif len(face.verts) == 4:  # Quad
+                tri1 = [verts[0], verts[1], verts[2]]
+                tri2 = [verts[2], verts[3], verts[0]]
+                self.quads_data.extend(tri1 + tri2)
+                self.quads_normals.extend([normal] * 6)
+            else:  # N-gon
+                for i in range(1, len(face.verts) - 1):
+                    tri = [verts[0], verts[i], verts[i + 1]]
+                    self.ngons_data.extend(tri)
+                    self.ngons_normals.extend([normal] * 3)
 
-        bm.free()
-
-    def analyze_poles(self, obj):
-        self.poles = []
-        for vert in obj.data.vertices:
-            # Get connected edges
-            connected_edges = [
-                e
-                for e in obj.data.edges
-                if vert.index in (e.vertices[0], e.vertices[1])
-            ]
-
-            # Check if vertex is a pole (not 4 edges)
-            if len(connected_edges) > 4:
-                vert_pos = obj.matrix_world @ vert.co
-                self.poles.append(vert_pos)
-
-    def analyze_singles(self, obj):
-        self.singles = []
-        for vert in obj.data.vertices:
-            # Get connected edges
-            connected_edges = [
-                e
-                for e in obj.data.edges
-                if vert.index in (e.vertices[0], e.vertices[1])
-            ]
-
-            # Check if vertex has no connected edges
-            if len(connected_edges) == 0:
-                vert_pos = obj.matrix_world @ vert.co
-                self.singles.append(vert_pos)
-
-    def analyze_non_manifold_edges(self, obj):
-        self.non_manifold_edges = []
-        bm = bmesh.new()
-        bm.from_mesh(obj.data)
-
-        for e in bm.edges:
-            if not e.is_manifold:
-                # Store both vertices of the edge for line drawing
-                v1 = obj.matrix_world @ e.verts[0].co
-                v2 = obj.matrix_world @ e.verts[1].co
-                self.non_manifold_edges.extend(
-                    [v1, v2]
-                )  # Store as pairs for LINE primitive
-
-        bm.free()
-
-    def analyze_non_manifold_verts(self, obj):
-        self.non_manifold_verts = []
-        bm = bmesh.new()
-        bm.from_mesh(obj.data)
-
+        # Analyze vertices for poles and singles
         for v in bm.verts:
-            if not v.is_manifold:
-                vert_pos = obj.matrix_world @ v.co
-                self.non_manifold_verts.append(vert_pos)
+            world_pos = matrix_world @ v.co
+            edge_count = len(v.link_edges)
 
+            if edge_count == 0:
+                self.singles_data.append(world_pos)
+            elif edge_count > 4:
+                self.poles_data.append(world_pos)
+
+            if not v.is_manifold:
+                self.non_manifold_verts_data.append(world_pos)
+
+        # Analyze non-manifold edges
+        for edge in bm.edges:
+            if not edge.is_manifold:
+                v1 = matrix_world @ edge.verts[0].co
+                v2 = matrix_world @ edge.verts[1].co
+                self.non_manifold_edges_data.extend([v1, v2])
+
+        # Free BMesh
         bm.free()

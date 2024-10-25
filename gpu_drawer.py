@@ -9,7 +9,6 @@ import gpu
 from gpu_extras.batch import batch_for_shader
 from mathutils import Vector
 from .mesh_topology_analyzer import MeshTopologyAnalyzer
-import math
 
 
 class GPUDrawer:
@@ -27,38 +26,16 @@ class GPUDrawer:
         self.show_singles = True
         self.show_non_manifold_edges = True
         self.show_non_manifold_verts = True
-        self.sphere_vertices = self.create_sphere_vertices(radius=0.02, segments=8)
 
     def update_visibility(self):
-        self.show_tris = bpy.context.scene.GPU_Topology_Overlay_Properties.show_tris
-        self.show_quads = bpy.context.scene.GPU_Topology_Overlay_Properties.show_quads
-        self.show_ngons = bpy.context.scene.GPU_Topology_Overlay_Properties.show_ngons
-        self.show_poles = bpy.context.scene.GPU_Topology_Overlay_Properties.show_poles
-        self.show_singles = (
-            bpy.context.scene.GPU_Topology_Overlay_Properties.show_singles
-        )
-        self.show_non_manifold_edges = (
-            bpy.context.scene.GPU_Topology_Overlay_Properties.show_non_manifold_edges
-        )
-        self.show_non_manifold_verts = (
-            bpy.context.scene.GPU_Topology_Overlay_Properties.show_non_manifold_verts
-        )
-
-    def create_sphere_vertices(self, radius=0.02, segments=8):
-        """Create vertices for a low-poly sphere"""
-        vertices = []
-        # Create vertices for a UV sphere
-        for i in range(segments):
-            for j in range(segments):
-                phi = (i * 2 * 3.141592) / segments
-                theta = (j * 3.141592) / segments
-
-                x = radius * math.sin(theta) * math.cos(phi)
-                y = radius * math.sin(theta) * math.sin(phi)
-                z = radius * math.cos(theta)
-
-                vertices.append(Vector((x, y, z)))
-        return vertices
+        props = bpy.context.scene.GPU_Topology_Overlay_Properties
+        self.show_tris = props.show_tris
+        self.show_quads = props.show_quads
+        self.show_ngons = props.show_ngons
+        self.show_poles = props.show_poles
+        self.show_singles = props.show_singles
+        self.show_non_manifold_edges = props.show_non_manifold_edges
+        self.show_non_manifold_verts = props.show_non_manifold_verts
 
     def draw(self):
         gpu.state.blend_set("ALPHA")
@@ -67,97 +44,125 @@ class GPUDrawer:
         self.update_visibility()
 
         obj = bpy.context.active_object
-        if obj and self.mesh_analyzer:
-            bpy.context.view_layer.update()
-            if obj.mode == "EDIT":
-                obj.update_from_editmode()
+        if obj and obj.type == "MESH":
+            # Draw all elements using the stored data
+            if self.show_tris and self.mesh_analyzer.tris_data:
+                offset_verts = [
+                    v + n * props.overlay_face_offset
+                    for v, n in zip(
+                        self.mesh_analyzer.tris_data, self.mesh_analyzer.tris_normals
+                    )
+                ]
+                self._draw_elements(offset_verts, props.tris_color, "TRIS")
 
-            # Collect faces
-            faces = []
-            face_colors = []
-            offset_value = props.overlay_face_offset
-            if self.show_tris:
-                self.mesh_analyzer.analyze_tris(obj, offset_value)
-                faces.extend(self.mesh_analyzer.tris)
-                face_colors.extend(
-                    [tuple(props.tris_color)] * len(self.mesh_analyzer.tris)
+            if self.show_quads and self.mesh_analyzer.quads_data:
+                offset_verts = [
+                    v + n * props.overlay_face_offset
+                    for v, n in zip(
+                        self.mesh_analyzer.quads_data, self.mesh_analyzer.quads_normals
+                    )
+                ]
+                self._draw_elements(
+                    offset_verts,
+                    props.quads_color,
+                    "TRIS",  # Quads are triangulated
                 )
 
-            if self.show_quads:
-                self.mesh_analyzer.analyze_quads(obj, offset_value)
-                faces.extend(self.mesh_analyzer.quads)
-                face_colors.extend(
-                    [tuple(props.quads_color)] * len(self.mesh_analyzer.quads)
+            if self.show_ngons and self.mesh_analyzer.ngons_data:
+                offset_verts = [
+                    v + n * props.overlay_face_offset
+                    for v, n in zip(
+                        self.mesh_analyzer.ngons_data, self.mesh_analyzer.ngons_normals
+                    )
+                ]
+                self._draw_elements(offset_verts, props.ngons_color, "TRIS")
+
+            if self.show_poles and self.mesh_analyzer.poles_data:
+                self._draw_elements(
+                    self.mesh_analyzer.poles_data,
+                    props.poles_color,
+                    "POINTS",
+                    size=props.overlay_vertex_radius,
                 )
 
-            if self.show_ngons:
-                self.mesh_analyzer.analyze_ngons(obj, offset_value)
-                faces.extend(self.mesh_analyzer.ngons)
-                face_colors.extend(
-                    [tuple(props.ngons_color)] * len(self.mesh_analyzer.ngons)
+            if self.show_singles and self.mesh_analyzer.singles_data:
+                self._draw_elements(
+                    self.mesh_analyzer.singles_data,
+                    props.singles_color,
+                    "POINTS",
+                    size=props.overlay_vertex_radius,
                 )
 
-            # Collect vertices
-            vertices = []
-            vertex_colors = []
-            if self.show_poles:
-                self.mesh_analyzer.analyze_poles(obj)
-                vertices = self.mesh_analyzer.poles
-                vertex_colors = [tuple(props.poles_color)] * len(vertices)
-
-            if self.show_singles:
-                self.mesh_analyzer.analyze_singles(obj)
-                vertices.extend(self.mesh_analyzer.singles)
-                vertex_colors.extend(
-                    [tuple(props.singles_color)] * len(self.mesh_analyzer.singles)
-                )
-            if self.show_non_manifold_verts:
-                self.mesh_analyzer.analyze_non_manifold_verts(obj)
-                vertices.extend(self.mesh_analyzer.non_manifold_verts)
-                vertex_colors.extend(
-                    [tuple(props.non_manifold_verts_color)]
-                    * len(self.mesh_analyzer.non_manifold_verts)
+            if (
+                self.show_non_manifold_edges
+                and self.mesh_analyzer.non_manifold_edges_data
+            ):
+                self._draw_elements(
+                    self.mesh_analyzer.non_manifold_edges_data,
+                    props.non_manifold_edges_color,
+                    "LINES",
+                    line_width=props.overlay_edge_width,
                 )
 
-            # Collect edges
-            edges = []
-            edge_colors = []
-            if self.show_non_manifold_edges:
-                self.mesh_analyzer.analyze_non_manifold_edges(obj)
-                edges.extend(self.mesh_analyzer.non_manifold_edges)
-                edge_colors.extend(
-                    [tuple(props.non_manifold_edges_color)]
-                    * len(self.mesh_analyzer.non_manifold_edges)
+            if (
+                self.show_non_manifold_verts
+                and self.mesh_analyzer.non_manifold_verts_data
+            ):
+                self._draw_points(
+                    self.mesh_analyzer.non_manifold_verts_data,
+                    props.non_manifold_verts_color,
                 )
 
-            # Draw faces
-            if faces:
-                vertex_shader = gpu.shader.from_builtin("SMOOTH_COLOR")
-                vertex_shader.bind()
-                mesh_data = {"vertices": faces, "colors": face_colors}
-                self.create_batch(mesh_data, "TRIS")
-                self.batch.draw(vertex_shader)
+    def depsgraph_update(self, scene, depsgraph):
+        if self.is_running:  # Removed the depsgraph.id_type_updated check
+            obj = bpy.context.active_object
+            if obj and obj.type == "MESH":
+                if obj.mode == "EDIT":
+                    obj.update_from_editmode()
 
-            # Draw vertices
-            if vertices:
-                vertex_shader = gpu.shader.from_builtin("SMOOTH_COLOR")
-                vertex_shader.bind()
-                gpu.state.point_size_set(props.overlay_vertex_radius)
-                mesh_data = {"vertices": vertices, "colors": vertex_colors}
-                self.create_batch(mesh_data, "POINTS")
-                self.batch.draw(vertex_shader)
+                # Analyze mesh
+                props = scene.GPU_Topology_Overlay_Properties
+                self.mesh_analyzer.analyze_mesh(obj, props.overlay_face_offset)
 
-            # Draw edges
-            if edges:
-                shader_lines = gpu.shader.from_builtin("SMOOTH_COLOR")
-                shader_lines.bind()
-                gpu.state.line_width_set(props.overlay_edge_width)
-                mesh_data = {"vertices": edges, "colors": edge_colors}
-                self.create_batch(mesh_data, "LINES")
-                self.batch.draw(shader_lines)
+                # Redraw viewport
+                for window in bpy.context.window_manager.windows:
+                    for area in window.screen.areas:
+                        if area.type == "VIEW_3D":
+                            area.tag_redraw()
 
-            gpu.state.blend_set("NONE")
-            gpu.state.depth_test_set("NONE")
+    def _draw_elements(self, vertices, color, primitive, size=None, line_width=None):
+        if not vertices:
+            return
+        colors = [color] * len(vertices)
+        self.shader.bind()
+
+        # Set size/width based on primitive type
+        if primitive == "POINTS":
+            gpu.state.point_size_set(size)
+        elif primitive == "LINES":
+            gpu.state.line_width_set(line_width)
+
+        self.batch = batch_for_shader(
+            self.shader, primitive, {"pos": vertices, "color": colors}
+        )
+        self.batch.draw(self.shader)
+
+    def _draw_points(self, positions, color):
+        if not positions:
+            return
+        for pos in positions:
+            self._draw_sphere(pos, color)
+
+    def _draw_sphere(self, position, color):
+        # Transform sphere vertices to position
+        vertices = [(v + Vector(position)) for v in self.sphere_vertices]
+        colors = [color] * len(vertices)
+
+        self.shader.bind()
+        self.batch = batch_for_shader(
+            self.shader, "POINTS", {"pos": vertices, "color": colors}
+        )
+        self.batch.draw(self.shader)
 
     def create_batch(self, mesh_data, primitive="TRIS"):
         self.batch = batch_for_shader(
@@ -171,29 +176,29 @@ class GPUDrawer:
             self.handle = bpy.types.SpaceView3D.draw_handler_add(
                 self.draw, (), "WINDOW", "POST_VIEW"
             )
-            # Add timer for continuous updates
-            self._timer = bpy.app.timers.register(self.timer_update, persistent=True)
+            bpy.app.handlers.depsgraph_update_post.append(self.depsgraph_update)
             self.is_running = True
+
+            # Force initial analysis
+            obj = bpy.context.active_object
+            if obj and obj.type == "MESH":
+                props = bpy.context.scene.GPU_Topology_Overlay_Properties
+                self.mesh_analyzer.analyze_mesh(obj, props.overlay_face_offset)
+                # Force viewport redraw
+                for window in bpy.context.window_manager.windows:
+                    for area in window.screen.areas:
+                        if area.type == "VIEW_3D":
+                            area.tag_redraw()
 
     def stop(self):
         if self.is_running:
             if self.handle:
                 bpy.types.SpaceView3D.draw_handler_remove(self.handle, "WINDOW")
-            if self._timer:
-                bpy.app.timers.unregister(self._timer)
+            # Remove depsgraph callback
+            if self.depsgraph_update in bpy.app.handlers.depsgraph_update_post:
+                bpy.app.handlers.depsgraph_update_post.remove(self.depsgraph_update)
             self.handle = None
-            self._timer = None
             self.is_running = False
-
-    def timer_update(self):
-        if self.is_running:
-            # Force viewport update
-            for window in bpy.context.window_manager.windows:
-                for area in window.screen.areas:
-                    if area.type == "VIEW_3D":
-                        area.tag_redraw()
-            return 1 / 60  # Update every 1/60 second
-        return None
 
 
 # Update the drawer instance
