@@ -68,6 +68,7 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         split.prop(props, "show_singles", text="Single Vertices")
         split.prop(props, "singles_color", text="")
 
+        # Non-manifold verts row
         row = layout.row(align=True)
         split = row.split(factor=factor)
         split.prop(props, "show_non_manifold_verts", text="Non-Manifold Vertices")
@@ -79,11 +80,13 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         split.prop(props, "show_n_poles", text="N-Poles (3)")
         split.prop(props, "n_poles_color", text="")
 
+        # E-poles row
         row = layout.row(align=True)
         split = row.split(factor=factor)
         split.prop(props, "show_e_poles", text="E-Poles (5)")
         split.prop(props, "e_poles_color", text="")
 
+        # High-poles row
         row = layout.row(align=True)
         split = row.split(factor=factor)
         split.prop(props, "show_high_poles", text="High-Poles (6+)")
