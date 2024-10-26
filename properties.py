@@ -187,7 +187,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     overlay_face_offset: FloatProperty(
         name="Overlay Face Offset",
         description="Distance to offset the overlay faces",
-        default=0.001,
+        default=0.01,
         precision=4,
     )
     overlay_vertex_radius: FloatProperty(
