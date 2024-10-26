@@ -28,11 +28,6 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         description="Show n-gon overlays",
         default=True,
     )
-    show_poles: BoolProperty(
-        name="Show Poles",
-        description="Show pole indicators",
-        default=True,
-    )
     show_singles: BoolProperty(
         name="Show Singles",
         description="Show single vertex indicators",
@@ -70,14 +65,6 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         name="N-gons Color",
         subtype="COLOR",
         default=(0.0, 0.0, 1.0, 0.5),
-        size=4,
-        min=0.0,
-        max=1.0,
-    )
-    poles_color: FloatVectorProperty(
-        name="Poles Color",
-        subtype="COLOR",
-        default=(1.0, 0.0, 1.0, 0.5),  # Magenta with 0.5 alpha
         size=4,
         min=0.0,
         max=1.0,
@@ -146,7 +133,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         description="Show vertices with 6 or more edges",
         default=True,
     )
-    
+
     n_poles_color: FloatVectorProperty(
         name="N-Poles Color",
         subtype="COLOR",
@@ -171,6 +158,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         min=0.0,
         max=1.0,
     )
+
 
 classes = (Mesh_Analysis_Overlay_Props,)
 
