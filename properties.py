@@ -18,33 +18,6 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         description="Show triangle overlays",
         default=True,
     )
-    show_quads: BoolProperty(
-        name="Show Quads",
-        description="Show quad overlays",
-        default=True,
-    )
-    show_ngons: BoolProperty(
-        name="Show N-gons",
-        description="Show n-gon overlays",
-        default=True,
-    )
-    show_singles: BoolProperty(
-        name="Show Singles",
-        description="Show single vertex indicators",
-        default=True,
-    )
-    show_non_manifold_verts: BoolProperty(
-        name="Show Non-Manifold Vertices",
-        description="Show non-manifold vertices",
-        default=True,
-    )
-    show_non_manifold_edges: BoolProperty(
-        name="Show Non-Manifold Edges",
-        description="Show non-manifold edges",
-        default=True,
-    )
-
-    # COLORS
     tris_color: FloatVectorProperty(
         name="Triangles Color",
         subtype="COLOR",
@@ -52,6 +25,11 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         size=4,
         min=0.0,
         max=1.0,
+    )
+    show_quads: BoolProperty(
+        name="Show Quads",
+        description="Show quad overlays",
+        default=True,
     )
     quads_color: FloatVectorProperty(
         name="Quads Color",
@@ -61,6 +39,11 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         min=0.0,
         max=1.0,
     )
+    show_ngons: BoolProperty(
+        name="Show N-gons",
+        description="Show n-gon overlays",
+        default=True,
+    )
     ngons_color: FloatVectorProperty(
         name="N-gons Color",
         subtype="COLOR",
@@ -68,6 +51,11 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         size=4,
         min=0.0,
         max=1.0,
+    )
+    show_singles: BoolProperty(
+        name="Show Singles",
+        description="Show single vertex indicators",
+        default=True,
     )
     singles_color: FloatVectorProperty(
         name="Singles Color",
@@ -77,6 +65,11 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         min=0.0,
         max=1.0,
     )
+    show_non_manifold_verts: BoolProperty(
+        name="Show Non-Manifold Vertices",
+        description="Show non-manifold vertices",
+        default=True,
+    )
     non_manifold_verts_color: FloatVectorProperty(
         name="Non-Manifold Vertices Color",
         subtype="COLOR",
@@ -85,10 +78,55 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         min=0.0,
         max=1.0,
     )
+    show_non_manifold_edges: BoolProperty(
+        name="Show Non-Manifold Edges",
+        description="Show non-manifold edges",
+        default=True,
+    )
     non_manifold_edges_color: FloatVectorProperty(
         name="Non-Manifold Edges Color",
         subtype="COLOR",
         default=(1.0, 0.5, 0.0, 0.5),  # Orange with 0.5 alpha
+        size=4,
+        min=0.0,
+        max=1.0,
+    )
+
+    show_n_poles: BoolProperty(
+        name="Show N-Poles (3 edges)",
+        description="Show vertices with 3 edges",
+        default=True,
+    )
+    n_poles_color: FloatVectorProperty(
+        name="N-Poles Color",
+        subtype="COLOR",
+        default=(1.0, 0.5, 0.0, 0.5),  # Orange
+        size=4,
+        min=0.0,
+        max=1.0,
+    )
+    show_e_poles: BoolProperty(
+        name="Show E-Poles (5 edges)",
+        description="Show vertices with 5 edges",
+        default=True,
+    )
+    e_poles_color: FloatVectorProperty(
+        name="E-Poles Color",
+        subtype="COLOR",
+        default=(0.0, 1.0, 1.0, 0.5),  # Cyan
+        size=4,
+        min=0.0,
+        max=1.0,
+    )
+    show_high_poles: BoolProperty(
+        name="Show High-Poles (6+ edges)",
+        description="Show vertices with 6 or more edges",
+        default=True,
+    )
+    high_poles_color: FloatVectorProperty(
+        name="High-Poles Color",
+        subtype="COLOR",
+        default=(1.0, 0.0, 1.0, 0.5),  # Magenta
         size=4,
         min=0.0,
         max=1.0,
@@ -115,48 +153,6 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         default=5.0,
         min=1.0,
         max=10.0,
-    )
-
-    # POLES
-    show_n_poles: BoolProperty(
-        name="Show N-Poles (3 edges)",
-        description="Show vertices with 3 edges",
-        default=True,
-    )
-    show_e_poles: BoolProperty(
-        name="Show E-Poles (5 edges)",
-        description="Show vertices with 5 edges",
-        default=True,
-    )
-    show_high_poles: BoolProperty(
-        name="Show High-Poles (6+ edges)",
-        description="Show vertices with 6 or more edges",
-        default=True,
-    )
-
-    n_poles_color: FloatVectorProperty(
-        name="N-Poles Color",
-        subtype="COLOR",
-        default=(1.0, 0.5, 0.0, 0.5),  # Orange
-        size=4,
-        min=0.0,
-        max=1.0,
-    )
-    e_poles_color: FloatVectorProperty(
-        name="E-Poles Color",
-        subtype="COLOR",
-        default=(0.0, 1.0, 1.0, 0.5),  # Cyan
-        size=4,
-        min=0.0,
-        max=1.0,
-    )
-    high_poles_color: FloatVectorProperty(
-        name="High-Poles Color",
-        subtype="COLOR",
-        default=(1.0, 0.0, 1.0, 0.5),  # Magenta
-        size=4,
-        min=0.0,
-        max=1.0,
     )
 
 

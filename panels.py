@@ -29,6 +29,7 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             depress=operators.drawer.is_running,
         )
 
+        layout.label(text="Faces")
         # Triangles row
         row = layout.row(align=True)
         split = row.split(factor=factor)
@@ -47,21 +48,24 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         split.prop(props, "show_ngons", text="N-Gons")
         split.prop(props, "ngons_color", text="")
 
-        # Add after poles row
-        row = layout.row(align=True)
-        split = row.split(factor=factor)
-        split.prop(props, "show_singles", text="Single Vertices")
-        split.prop(props, "singles_color", text="")
-
+        layout.label(text="Edges")
         # Replace the single non-manifold row with two separate rows
         row = layout.row(align=True)
         split = row.split(factor=factor)
         split.prop(props, "show_non_manifold_edges", text="Non-Manifold Edges")
         split.prop(props, "non_manifold_edges_color", text="")
 
+        layout.label(text="Vertices")
+        # Add after poles row
         row = layout.row(align=True)
         split = row.split(factor=factor)
-        split.prop(props, "show_non_manifold_verts", text="Non-Manifold Vertices")
+        split.prop(props, "show_singles", text="Single Vertices")
+        split.prop(props, "singles_color", text="")
+
+        row = layout.row(align=True)
+        split = row.split(factor=factor)
+        split.prop(props, "show_non_manifold_verts",
+                   text="Non-Manifold Vertices")
         split.prop(props, "non_manifold_verts_color", text="")
 
         # Add pole type rows after the existing poles section
@@ -83,7 +87,8 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         # Offset settings
         layout.label(text="Overlay Settings:")
         layout.prop(props, "overlay_face_offset", text="Overlay Face Offset")
-        layout.prop(props, "overlay_vertex_radius", text="Overlay Vertex Radius")
+        layout.prop(props, "overlay_vertex_radius",
+                    text="Overlay Vertex Radius")
         layout.prop(props, "overlay_edge_width", text="Overlay Edge Width")
 
 
