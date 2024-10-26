@@ -28,6 +28,7 @@ class GPUDrawer:
         self.show_high_poles = True
         self.show_sharp_edges = True
         self.show_seam_edges = True
+        self.show_non_planar = True
 
     def update_visibility(self):
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
@@ -42,6 +43,7 @@ class GPUDrawer:
         self.show_high_poles = props.show_high_poles
         self.show_sharp_edges = props.show_sharp_edges
         self.show_seam_edges = props.show_seam_edges
+        self.show_non_planar = props.show_non_planar
 
     def draw(self):
 
@@ -68,6 +70,11 @@ class GPUDrawer:
                     self.mesh_analyzer.ngons_data,
                     props.ngons_color,
                     "TRIS",
+                )
+
+            if self.show_non_planar:
+                self._draw_elements(
+                    self.mesh_analyzer.non_planar_data, props.non_planar_color, "TRIS"
                 )
 
             if self.show_singles:

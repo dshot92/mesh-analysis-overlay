@@ -48,6 +48,12 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         split.prop(props, "show_ngons", text="N-Gons")
         split.prop(props, "ngons_color", text="")
 
+        # Add after other face-related rows
+        row = layout.row(align=True)
+        split = row.split(factor=factor)
+        split.prop(props, "show_non_planar", text="Non-Planar Faces")
+        split.prop(props, "non_planar_color", text="")
+
         layout.label(text="Edges")
         # Replace the single non-manifold row with two separate rows
         row = layout.row(align=True)
@@ -106,6 +112,7 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             panel.prop(props, "overlay_face_offset", text="Overlay Face Offset")
             panel.prop(props, "overlay_edge_width", text="Overlay Edge Width")
             panel.prop(props, "overlay_vertex_radius", text="Overlay Vertex Radius")
+            panel.prop(props, "non_planar_threshold", text="Non-Planar Threshold")
 
 
 classes = (Mesh_Analysis_Overlay_Panel,)

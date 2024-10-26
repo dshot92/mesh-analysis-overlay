@@ -6,6 +6,7 @@
 
 import bmesh
 import bpy
+import math
 
 
 class MeshAnalyzer:
@@ -27,6 +28,30 @@ class MeshAnalyzer:
         self.non_manifold_verts_data = []
         self.sharp_edges_data = []
         self.seam_edges_data = []
+        self.non_planar_data = []
+        self.non_planar_normals = []
+
+    def is_face_planar(self, face, threshold_degrees):
+
+        # Get first 3 vertices to define the reference plane
+        v1, v2, v3 = [v.co for v in face.verts[:3]]
+
+        # Calculate plane normal using first 3 vertices
+        plane_normal = (v2 - v1).cross(v3 - v1).normalized()
+        plane_point = v1
+
+        # Check each remaining vertex's distance from plane
+        for vert in face.verts[3:]:
+            to_vert = (vert.co - plane_point).normalized()
+
+            # Calculate angle between vertex direction and plane normal
+            # cos(90° - angle) = sin(angle)
+            angle = abs(90 - math.degrees(math.acos(abs(to_vert.dot(plane_normal)))))
+
+            if angle > threshold_degrees:
+                return False
+
+        return True
 
     def analyze_mesh(self, obj, offset):
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
@@ -39,8 +64,17 @@ class MeshAnalyzer:
             or props.show_e_poles
             or props.show_high_poles
         )
-        analyze_edges = props.show_non_manifold_edges or props.show_sharp_edges or props.show_seam_edges
-        analyze_faces = props.show_tris or props.show_quads or props.show_ngons
+        analyze_edges = (
+            props.show_non_manifold_edges
+            or props.show_sharp_edges
+            or props.show_seam_edges
+        )
+        analyze_faces = (
+            props.show_tris
+            or props.show_quads
+            or props.show_ngons
+            or props.show_non_planar
+        )
 
         # Early return if nothing to analyze
         if not (analyze_verts or analyze_edges or analyze_faces):
@@ -153,6 +187,25 @@ class MeshAnalyzer:
                         self.ngons_normals.extend(
                             [matrix_world.to_3x3() @ face.normal] * 3
                         )
+                if props.show_non_planar and len(face.verts) > 3:
+                    if not self.is_face_planar(face, props.non_planar_threshold):
+                        analyze_verts = face.verts[:]
+                        vert_normals = [
+                            matrix_world.to_3x3() @ v.normal for v in analyze_verts
+                        ]
+                        vert_coords = [matrix_world @ v.co for v in analyze_verts]
+
+                        # Triangulate the face for display
+                        for i in range(1, len(analyze_verts) - 1):
+                            tri_indices = [0, i, i + 1]
+                            tri_verts = [
+                                vert_coords[idx] + vert_normals[idx] * offset
+                                for idx in tri_indices
+                            ]
+                            self.non_planar_data.extend(tri_verts)
+                            self.non_planar_normals.extend(
+                                [matrix_world.to_3x3() @ face.normal] * 3
+                            )
 
         # Free BMesh
         bm.free()

@@ -55,6 +55,20 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=1.0,
     )
 
+    show_non_planar: BoolProperty(
+        name="Show Non-Planar Faces",
+        description="Show faces that are not planar",
+        default=True,
+    )
+    non_planar_color: FloatVectorProperty(
+        name="Non-Planar Faces Color",
+        subtype="COLOR",
+        default=(1.0, 0.7, 0.0, 0.5),  # Orange-yellow with 0.5 alpha
+        size=4,
+        min=0.0,
+        max=1.0,
+    )
+
     # EDGES
     show_non_manifold_edges: BoolProperty(
         name="Show Non-Manifold Edges",
@@ -169,7 +183,6 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=1.0,
     )
 
-
     # SETTINGS VALUES
     overlay_face_offset: FloatProperty(
         name="Overlay Face Offset",
@@ -184,13 +197,19 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         min=1.0,
         max=50.0,
     )
-
     overlay_edge_width: FloatProperty(
         name="Overlay Edge Width",
         description="Width of the overlay edge indicators",
         default=5.0,
         min=1.0,
         max=10.0,
+    )
+    non_planar_threshold: FloatProperty(
+        name="Non-Planar Threshold",
+        description="Threshold angle for detecting non-planar faces (degrees)",
+        default=1.0,
+        min=0.0,
+        max=180.0,
     )
 
 
