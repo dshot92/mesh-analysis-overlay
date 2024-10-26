@@ -70,6 +70,22 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         split.prop(props, "show_non_manifold_verts", text="Non-Manifold Vertices")
         split.prop(props, "non_manifold_verts_color", text="")
 
+        # Add pole type rows after the existing poles section
+        row = layout.row(align=True)
+        split = row.split(factor=factor)
+        split.prop(props, "show_n_poles", text="N-Poles (3)")
+        split.prop(props, "n_poles_color", text="")
+
+        row = layout.row(align=True)
+        split = row.split(factor=factor)
+        split.prop(props, "show_e_poles", text="E-Poles (5)")
+        split.prop(props, "e_poles_color", text="")
+
+        row = layout.row(align=True)
+        split = row.split(factor=factor)
+        split.prop(props, "show_high_poles", text="High-Poles (6+)")
+        split.prop(props, "high_poles_color", text="")
+
         # Offset settings
         layout.label(text="Overlay Settings:")
         layout.prop(props, "overlay_face_offset", text="Overlay Face Offset")

@@ -19,7 +19,9 @@ class MeshAnalyzer:
         self.quads_normals = []
         self.ngons_data = []
         self.ngons_normals = []
-        self.poles_data = []
+        self.n_poles_data = []
+        self.e_poles_data = []
+        self.high_poles_data = []
         self.singles_data = []
         self.non_manifold_edges_data = []
         self.non_manifold_verts_data = []
@@ -119,6 +121,20 @@ class MeshAnalyzer:
                         self.ngons_normals.extend(
                             [matrix_world.to_3x3() @ face.normal] * 3
                         )
+
+        # Analyze vertices for different types of poles
+        poles = props.show_n_poles or props.show_e_poles or props.show_high_poles
+        if poles:
+            for v in bm.verts:
+                world_pos = matrix_world @ v.co
+                edge_count = len(v.link_edges)
+                
+                if edge_count == 3 and props.show_n_poles:
+                    self.n_poles_data.append(world_pos)
+                elif edge_count == 5 and props.show_e_poles:
+                    self.e_poles_data.append(world_pos)
+                elif edge_count >= 6 and props.show_high_poles:
+                    self.high_poles_data.append(world_pos)
 
         # Free BMesh
         bm.free()

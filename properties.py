@@ -130,6 +130,47 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=10.0,
     )
 
+    # POLES
+    show_n_poles: BoolProperty(
+        name="Show N-Poles (3 edges)",
+        description="Show vertices with 3 edges",
+        default=True,
+    )
+    show_e_poles: BoolProperty(
+        name="Show E-Poles (5 edges)",
+        description="Show vertices with 5 edges",
+        default=True,
+    )
+    show_high_poles: BoolProperty(
+        name="Show High-Poles (6+ edges)",
+        description="Show vertices with 6 or more edges",
+        default=True,
+    )
+    
+    n_poles_color: FloatVectorProperty(
+        name="N-Poles Color",
+        subtype="COLOR",
+        default=(1.0, 0.5, 0.0, 0.5),  # Orange
+        size=4,
+        min=0.0,
+        max=1.0,
+    )
+    e_poles_color: FloatVectorProperty(
+        name="E-Poles Color",
+        subtype="COLOR",
+        default=(0.0, 1.0, 1.0, 0.5),  # Cyan
+        size=4,
+        min=0.0,
+        max=1.0,
+    )
+    high_poles_color: FloatVectorProperty(
+        name="High-Poles Color",
+        subtype="COLOR",
+        default=(1.0, 0.0, 1.0, 0.5),  # Magenta
+        size=4,
+        min=0.0,
+        max=1.0,
+    )
 
 classes = (Mesh_Analysis_Overlay_Props,)
 

@@ -24,6 +24,9 @@ class GPUDrawer:
         self.show_singles = True
         self.show_non_manifold_edges = True
         self.show_non_manifold_verts = True
+        self.show_n_poles = True
+        self.show_e_poles = True
+        self.show_high_poles = True
 
     def update_visibility(self):
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
@@ -34,6 +37,9 @@ class GPUDrawer:
         self.show_singles = props.show_singles
         self.show_non_manifold_edges = props.show_non_manifold_edges
         self.show_non_manifold_verts = props.show_non_manifold_verts
+        self.show_n_poles = props.show_n_poles
+        self.show_e_poles = props.show_e_poles
+        self.show_high_poles = props.show_high_poles
 
     def draw(self):
 
@@ -90,6 +96,30 @@ class GPUDrawer:
                 self._draw_elements(
                     self.mesh_analyzer.non_manifold_verts_data,
                     props.non_manifold_verts_color,
+                    "POINTS",
+                    size=props.overlay_vertex_radius,
+                )
+
+            if self.show_n_poles:
+                self._draw_elements(
+                    self.mesh_analyzer.n_poles_data,
+                    props.n_poles_color,
+                    "POINTS",
+                    size=props.overlay_vertex_radius,
+                )
+
+            if self.show_e_poles:
+                self._draw_elements(
+                    self.mesh_analyzer.e_poles_data,
+                    props.e_poles_color,
+                    "POINTS",
+                    size=props.overlay_vertex_radius,
+                )
+
+            if self.show_high_poles:
+                self._draw_elements(
+                    self.mesh_analyzer.high_poles_data,
+                    props.high_poles_color,
                     "POINTS",
                     size=props.overlay_vertex_radius,
                 )
