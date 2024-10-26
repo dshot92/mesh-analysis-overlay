@@ -134,12 +134,19 @@ class MeshAnalyzer:
         if analyze_faces:
             for face in bm.faces:
                 if (len(face.verts) == 3) and props.show_tris:  # Triangle
-                    normal = matrix_world.to_3x3() @ face.normal
+                    # Get vertex normals instead of face normal
+                    analyze_verts = face.verts[:]
+                    vert_normals = [
+                        matrix_world.to_3x3() @ v.normal for v in analyze_verts
+                    ]
+                    vert_coords = [matrix_world @ v.co for v in analyze_verts]
+
+                    # Apply offset using vertex normals
                     analyze_verts = [
-                        matrix_world @ v.co + normal * offset for v in face.verts
+                        vert_coords[i] + vert_normals[i] * offset for i in range(3)
                     ]
                     self.tris_data.extend(analyze_verts)
-                    self.tris_normals.extend([normal] * 3)
+                    self.tris_normals.extend([matrix_world.to_3x3() @ face.normal] * 3)
                 elif (len(face.verts) == 4) and props.show_quads:  # Quad
                     # quads_to_process.append(face)
                     analyze_verts = face.verts[:]
