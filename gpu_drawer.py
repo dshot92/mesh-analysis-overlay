@@ -27,6 +27,7 @@ class GPUDrawer:
         self.show_e_poles = True
         self.show_high_poles = True
         self.show_sharp_edges = True
+        self.show_seam_edges = True
 
     def update_visibility(self):
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
@@ -40,6 +41,7 @@ class GPUDrawer:
         self.show_e_poles = props.show_e_poles
         self.show_high_poles = props.show_high_poles
         self.show_sharp_edges = props.show_sharp_edges
+        self.show_seam_edges = props.show_seam_edges
 
     def draw(self):
 
@@ -114,6 +116,13 @@ class GPUDrawer:
                 self._draw_elements(
                     self.mesh_analyzer.sharp_edges_data,
                     props.sharp_edges_color,
+                    "LINES",
+                )
+
+            if self.show_seam_edges:
+                self._draw_elements(
+                    self.mesh_analyzer.seam_edges_data,
+                    props.seam_edges_color,
                     "LINES",
                 )
 

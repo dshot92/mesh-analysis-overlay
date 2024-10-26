@@ -170,6 +170,19 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=10.0,
     )
 
+    show_seam_edges: BoolProperty(
+        name="Show Seam Edges",
+        description="Show UV seam edges",
+        default=True,
+    )
+    seam_edges_color: FloatVectorProperty(
+        name="Seam Edges Color",
+        subtype="COLOR",
+        default=(1.0, 0.0, 0.0, 0.5),  # Red with 0.5 alpha
+        size=4,
+        min=0.0,
+        max=1.0,
+    )
 
 classes = (Mesh_Analysis_Overlay_Props,)
 

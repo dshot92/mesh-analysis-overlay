@@ -61,6 +61,12 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         split.prop(props, "show_sharp_edges", text="Sharp Edges")
         split.prop(props, "sharp_edges_color", text="")
 
+        # Add after sharp edges row (line 62):
+        row = layout.row(align=True)
+        split = row.split(factor=factor)
+        split.prop(props, "show_seam_edges", text="Seam Edges")
+        split.prop(props, "seam_edges_color", text="")
+
         layout.label(text="Vertices")
         # Add after poles row
         row = layout.row(align=True)
