@@ -142,7 +142,6 @@ class GPUDrawer:
 
         gpu.state.blend_set("ALPHA")
         gpu.state.depth_test_set("LESS_EQUAL")
-        # gpu.state.depth_test_set("NONE")
 
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
 
@@ -156,13 +155,6 @@ class GPUDrawer:
             self.shader, primitive_type, {"pos": vertices, "color": colors}
         )
         self.batch.draw(self.shader)
-
-    # def create_batch(self, mesh_data, primitive="TRIS"):
-    #     self.batch = batch_for_shader(
-    #         self.shader,
-    #         primitive,
-    #         {"pos": mesh_data["vertices"], "color": mesh_data["colors"]},
-    #     )
 
     def start(self):
         if not self.is_running:
