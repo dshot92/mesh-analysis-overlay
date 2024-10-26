@@ -2,6 +2,8 @@
 
 Real-time mesh analysis visualization for Blender.
 
+![image](https://i.imgur.com/1uex1bC.jpeg)
+
 ## Overlays
 
 ### Vertex Overlays
