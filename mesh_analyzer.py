@@ -25,6 +25,7 @@ class MeshAnalyzer:
         self.singles_data = []
         self.non_manifold_edges_data = []
         self.non_manifold_verts_data = []
+        self.sharp_edges_data = []
 
     def analyze_mesh(self, obj, offset):
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
@@ -37,7 +38,7 @@ class MeshAnalyzer:
             or props.show_e_poles
             or props.show_high_poles
         )
-        analyze_edges = props.show_non_manifold_edges
+        analyze_edges = props.show_non_manifold_edges or props.show_sharp_edges
         analyze_faces = props.show_tris or props.show_quads or props.show_ngons
 
         # Early return if nothing to analyze
@@ -85,6 +86,10 @@ class MeshAnalyzer:
                     v1 = matrix_world @ edge.verts[0].co
                     v2 = matrix_world @ edge.verts[1].co
                     self.non_manifold_edges_data.extend([v1, v2])
+                if (not edge.smooth) and props.show_sharp_edges:
+                    v1 = matrix_world @ edge.verts[0].co
+                    v2 = matrix_world @ edge.verts[1].co
+                    self.sharp_edges_data.extend([v1, v2])
 
         # Analyze faces
         if analyze_faces:

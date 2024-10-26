@@ -132,6 +132,21 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=1.0,
     )
 
+    # Add after the non_manifold_edges properties
+    show_sharp_edges: BoolProperty(
+        name="Show Sharp Edges",
+        description="Show sharp edges",
+        default=True,
+    )
+    sharp_edges_color: FloatVectorProperty(
+        name="Sharp Edges Color",
+        subtype="COLOR",
+        default=(1.0, 1.0, 1.0, 0.5),  # White with 0.5 alpha
+        size=4,
+        min=0.0,
+        max=1.0,
+    )
+
     # SETTINGS VALUES
     overlay_face_offset: FloatProperty(
         name="Overlay Face Offset",

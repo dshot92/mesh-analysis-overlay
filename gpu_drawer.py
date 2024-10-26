@@ -26,6 +26,7 @@ class GPUDrawer:
         self.show_n_poles = True
         self.show_e_poles = True
         self.show_high_poles = True
+        self.show_sharp_edges = True
 
     def update_visibility(self):
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
@@ -38,6 +39,7 @@ class GPUDrawer:
         self.show_n_poles = props.show_n_poles
         self.show_e_poles = props.show_e_poles
         self.show_high_poles = props.show_high_poles
+        self.show_sharp_edges = props.show_sharp_edges
 
     def draw(self):
 
@@ -112,6 +114,14 @@ class GPUDrawer:
                     props.high_poles_color,
                     "POINTS",
                     size=props.overlay_vertex_radius,
+                )
+
+            if self.show_sharp_edges:
+                self._draw_elements(
+                    self.mesh_analyzer.sharp_edges_data,
+                    props.sharp_edges_color,
+                    "LINES",
+                    line_width=props.overlay_edge_width,
                 )
 
     def depsgraph_update(self, scene, depsgraph):

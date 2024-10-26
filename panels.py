@@ -55,6 +55,12 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         split.prop(props, "show_non_manifold_edges", text="Non-Manifold Edges")
         split.prop(props, "non_manifold_edges_color", text="")
 
+        # Add after the non-manifold edges row
+        row = layout.row(align=True)
+        split = row.split(factor=factor)
+        split.prop(props, "show_sharp_edges", text="Sharp Edges")
+        split.prop(props, "sharp_edges_color", text="")
+
         layout.label(text="Vertices")
         # Add after poles row
         row = layout.row(align=True)
@@ -64,8 +70,7 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
 
         row = layout.row(align=True)
         split = row.split(factor=factor)
-        split.prop(props, "show_non_manifold_verts",
-                   text="Non-Manifold Vertices")
+        split.prop(props, "show_non_manifold_verts", text="Non-Manifold Vertices")
         split.prop(props, "non_manifold_verts_color", text="")
 
         # Add pole type rows after the existing poles section
@@ -89,12 +94,9 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         header.label(text="Overlay Settings")
 
         if panel:
-            panel.prop(props, "overlay_face_offset",
-                       text="Overlay Face Offset")
-            panel.prop(props, "overlay_edge_width",
-                       text="Overlay Edge Width")
-            panel.prop(props, "overlay_vertex_radius",
-                       text="Overlay Vertex Radius")
+            panel.prop(props, "overlay_face_offset", text="Overlay Face Offset")
+            panel.prop(props, "overlay_edge_width", text="Overlay Edge Width")
+            panel.prop(props, "overlay_vertex_radius", text="Overlay Vertex Radius")
 
 
 classes = (Mesh_Analysis_Overlay_Panel,)
