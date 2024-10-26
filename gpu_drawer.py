@@ -30,6 +30,7 @@ class GPUDrawer:
         self.show_sharp_edges = True
         self.show_seam_edges = True
         self.show_non_planar = True
+        self.active_object = None  # Add this line to track active object
 
     def update_visibility(self):
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
@@ -50,6 +51,15 @@ class GPUDrawer:
         self.update_visibility()
 
         obj = bpy.context.active_object
+        # Check if active object changed
+        if obj != self.active_object:
+            self.active_object = obj
+            # Force analysis of new object
+            if obj and obj.type == "MESH":
+                props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+                self.mesh_analyzer.analyze_mesh(obj, props.overlay_face_offset)
+                self.depsgraph_update(bpy.context.scene, None)
+
         if obj and obj.type == "MESH":
             self.shader.bind()
             gpu.state.blend_set("ALPHA")
@@ -191,6 +201,8 @@ class GPUDrawer:
                 bpy.app.handlers.depsgraph_update_post.remove(self.depsgraph_update)
             self.handle = None
             self.is_running = False
+            self.active_object = None  # Reset active object reference
+            self.batches = {}  # Clear batches
 
     def _create_batch(self, vertices, color, primitive_type):
         if not vertices:
