@@ -69,11 +69,11 @@ class MeshAnalyzer:
 
                 if (edge_count == 0) and props.show_singles:
                     self.singles_data.append(world_pos)
-                elif edge_count == 3 and props.show_n_poles:
+                if edge_count == 3 and props.show_n_poles:
                     self.n_poles_data.append(world_pos)
-                elif edge_count == 5 and props.show_e_poles:
+                if edge_count == 5 and props.show_e_poles:
                     self.e_poles_data.append(world_pos)
-                elif edge_count >= 6 and props.show_high_poles:
+                if edge_count >= 6 and props.show_high_poles:
                     self.high_poles_data.append(world_pos)
 
                 if (not v.is_manifold) and props.show_non_manifold_verts:
