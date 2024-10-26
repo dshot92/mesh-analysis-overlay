@@ -24,7 +24,7 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         row = layout.row()
         row.operator(
             "view3d.mesh_analysis_overlay",
-            text="Mesh Overlay",
+            text="Show Mesh Overlay",
             icon="OVERLAY",
             depress=operators.drawer.is_running,
         )
@@ -85,11 +85,16 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         split.prop(props, "high_poles_color", text="")
 
         # Offset settings
-        layout.label(text="Overlay Settings:")
-        layout.prop(props, "overlay_face_offset", text="Overlay Face Offset")
-        layout.prop(props, "overlay_vertex_radius",
-                    text="Overlay Vertex Radius")
-        layout.prop(props, "overlay_edge_width", text="Overlay Edge Width")
+        header, panel = layout.panel("panel_settings", default_closed=True)
+        header.label(text="Overlay Settings")
+
+        if panel:
+            panel.prop(props, "overlay_face_offset",
+                       text="Overlay Face Offset")
+            panel.prop(props, "overlay_edge_width",
+                       text="Overlay Edge Width")
+            panel.prop(props, "overlay_vertex_radius",
+                       text="Overlay Vertex Radius")
 
 
 classes = (Mesh_Analysis_Overlay_Panel,)
