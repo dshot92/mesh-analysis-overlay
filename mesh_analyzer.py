@@ -46,14 +46,14 @@ class MeshAnalyzer:
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
 
         # Analyze vertices for poles and singles and non-manifold verts
-        verts = (
+        analyze_verts = (
             props.show_singles
             or props.show_non_manifold_verts
             or props.show_n_poles
             or props.show_e_poles
             or props.show_high_poles
         )
-        if verts:
+        if analyze_verts:
             for v in bm.verts:
                 world_pos = matrix_world @ v.co
                 edge_count = len(v.link_edges)
@@ -66,15 +66,13 @@ class MeshAnalyzer:
                     self.e_poles_data.append(world_pos)
                 elif edge_count >= 6 and props.show_high_poles:
                     self.high_poles_data.append(world_pos)
-                elif (edge_count > 4) and props.show_poles:
-                    self.poles_data.append(world_pos)
 
                 if (not v.is_manifold) and props.show_non_manifold_verts:
                     self.non_manifold_verts_data.append(world_pos)
 
         # Analyze non-manifold edges
-        edges = props.show_non_manifold_edges
-        if edges:
+        analyze_edges = props.show_non_manifold_edges
+        if analyze_edges:
             for edge in bm.edges:
                 if (not edge.is_manifold) and props.show_non_manifold_edges:
                     v1 = matrix_world @ edge.verts[0].co
@@ -82,19 +80,19 @@ class MeshAnalyzer:
                     self.non_manifold_edges_data.extend([v1, v2])
 
         # Analyze faces
-        faces = props.show_tris or props.show_quads or props.show_ngons
-        if faces:
+        analyze_faces = props.show_tris or props.show_quads or props.show_ngons
+        if analyze_faces:
             for face in bm.faces:
                 if (len(face.verts) == 3) and props.show_tris:  # Triangle
                     normal = matrix_world.to_3x3() @ face.normal
-                    verts = [matrix_world @ v.co + normal * offset for v in face.verts]
-                    self.tris_data.extend(verts)
+                    analyze_verts = [matrix_world @ v.co + normal * offset for v in face.verts]
+                    self.tris_data.extend(analyze_verts)
                     self.tris_normals.extend([normal] * 3)
                 elif (len(face.verts) == 4) and props.show_quads:  # Quad
                     # quads_to_process.append(face)
-                    verts = face.verts[:]
-                    vert_normals = [matrix_world.to_3x3() @ v.normal for v in verts]
-                    vert_coords = [matrix_world @ v.co for v in verts]
+                    analyze_verts = face.verts[:]
+                    vert_normals = [matrix_world.to_3x3() @ v.normal for v in analyze_verts]
+                    vert_coords = [matrix_world @ v.co for v in analyze_verts]
 
                     # Create two triangles from the quad (0,1,2) and (0,2,3)
                     tri1_indices = [0, 1, 2]
@@ -115,12 +113,12 @@ class MeshAnalyzer:
                     self.quads_normals.extend([matrix_world.to_3x3() @ face.normal] * 3)
                 elif (len(face.verts) > 4) and props.show_ngons:  # N-gon
                     # ngons_to_process.append(face)
-                    verts = face.verts[:]
-                    vert_normals = [matrix_world.to_3x3() @ v.normal for v in verts]
-                    vert_coords = [matrix_world @ v.co for v in verts]
+                    analyze_verts = face.verts[:]
+                    vert_normals = [matrix_world.to_3x3() @ v.normal for v in analyze_verts]
+                    vert_coords = [matrix_world @ v.co for v in analyze_verts]
 
                     # Create triangles by fanning from the first vertex
-                    for i in range(1, len(verts) - 1):
+                    for i in range(1, len(analyze_verts) - 1):
                         # Create triangle indices (0, i, i+1)
                         tri_indices = [0, i, i + 1]
 
