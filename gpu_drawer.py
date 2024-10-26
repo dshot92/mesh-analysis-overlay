@@ -73,7 +73,6 @@ class GPUDrawer:
                     self.mesh_analyzer.singles_data,
                     props.singles_color,
                     "POINTS",
-                    size=props.overlay_vertex_radius,
                 )
 
             if self.show_non_manifold_edges:
@@ -81,7 +80,6 @@ class GPUDrawer:
                     self.mesh_analyzer.non_manifold_edges_data,
                     props.non_manifold_edges_color,
                     "LINES",
-                    line_width=props.overlay_edge_width,
                 )
 
             if self.show_non_manifold_verts:
@@ -89,7 +87,6 @@ class GPUDrawer:
                     self.mesh_analyzer.non_manifold_verts_data,
                     props.non_manifold_verts_color,
                     "POINTS",
-                    size=props.overlay_vertex_radius,
                 )
 
             if self.show_n_poles:
@@ -97,7 +94,6 @@ class GPUDrawer:
                     self.mesh_analyzer.n_poles_data,
                     props.n_poles_color,
                     "POINTS",
-                    size=props.overlay_vertex_radius,
                 )
 
             if self.show_e_poles:
@@ -105,7 +101,6 @@ class GPUDrawer:
                     self.mesh_analyzer.e_poles_data,
                     props.e_poles_color,
                     "POINTS",
-                    size=props.overlay_vertex_radius,
                 )
 
             if self.show_high_poles:
@@ -113,7 +108,6 @@ class GPUDrawer:
                     self.mesh_analyzer.high_poles_data,
                     props.high_poles_color,
                     "POINTS",
-                    size=props.overlay_vertex_radius,
                 )
 
             if self.show_sharp_edges:
@@ -121,7 +115,6 @@ class GPUDrawer:
                     self.mesh_analyzer.sharp_edges_data,
                     props.sharp_edges_color,
                     "LINES",
-                    line_width=props.overlay_edge_width,
                 )
 
     def depsgraph_update(self, scene, depsgraph):
@@ -141,7 +134,7 @@ class GPUDrawer:
                         if area.type == "VIEW_3D":
                             area.tag_redraw()
 
-    def _draw_elements(self, vertices, color, primitive, size=None, line_width=None):
+    def _draw_elements(self, vertices, color, primitive_type):
         if not vertices:
             return
         colors = [color] * len(vertices)
@@ -151,14 +144,16 @@ class GPUDrawer:
         gpu.state.depth_test_set("LESS_EQUAL")
         # gpu.state.depth_test_set("NONE")
 
+        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+
         # Set size/width based on primitive type
-        if primitive == "POINTS":
-            gpu.state.point_size_set(size)
-        elif primitive == "LINES":
-            gpu.state.line_width_set(line_width)
+        if primitive_type == "POINTS":
+            gpu.state.point_size_set(props.overlay_vertex_radius)
+        elif primitive_type == "LINES":
+            gpu.state.line_width_set(props.overlay_edge_width)
 
         self.batch = batch_for_shader(
-            self.shader, primitive, {"pos": vertices, "color": colors}
+            self.shader, primitive_type, {"pos": vertices, "color": colors}
         )
         self.batch.draw(self.shader)
 
