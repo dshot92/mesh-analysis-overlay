@@ -46,7 +46,13 @@ class MeshAnalyzer:
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
 
         # Analyze vertices for poles and singles and non-manifold verts
-        verts = props.show_poles or props.show_singles or props.show_non_manifold_verts
+        verts = (
+            props.show_singles
+            or props.show_non_manifold_verts
+            or props.show_n_poles
+            or props.show_e_poles
+            or props.show_high_poles
+        )
         if verts:
             for v in bm.verts:
                 world_pos = matrix_world @ v.co
@@ -54,6 +60,12 @@ class MeshAnalyzer:
 
                 if (edge_count == 0) and props.show_singles:
                     self.singles_data.append(world_pos)
+                elif edge_count == 3 and props.show_n_poles:
+                    self.n_poles_data.append(world_pos)
+                elif edge_count == 5 and props.show_e_poles:
+                    self.e_poles_data.append(world_pos)
+                elif edge_count >= 6 and props.show_high_poles:
+                    self.high_poles_data.append(world_pos)
                 elif (edge_count > 4) and props.show_poles:
                     self.poles_data.append(world_pos)
 
@@ -121,20 +133,6 @@ class MeshAnalyzer:
                         self.ngons_normals.extend(
                             [matrix_world.to_3x3() @ face.normal] * 3
                         )
-
-        # Analyze vertices for different types of poles
-        poles = props.show_n_poles or props.show_e_poles or props.show_high_poles
-        if poles:
-            for v in bm.verts:
-                world_pos = matrix_world @ v.co
-                edge_count = len(v.link_edges)
-                
-                if edge_count == 3 and props.show_n_poles:
-                    self.n_poles_data.append(world_pos)
-                elif edge_count == 5 and props.show_e_poles:
-                    self.e_poles_data.append(world_pos)
-                elif edge_count >= 6 and props.show_high_poles:
-                    self.high_poles_data.append(world_pos)
 
         # Free BMesh
         bm.free()

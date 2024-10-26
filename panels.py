@@ -47,12 +47,6 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         split.prop(props, "show_ngons", text="N-Gons")
         split.prop(props, "ngons_color", text="")
 
-        # Add after n-gons row
-        row = layout.row(align=True)
-        split = row.split(factor=factor)
-        split.prop(props, "show_poles", text="Poles")
-        split.prop(props, "poles_color", text="")
-
         # Add after poles row
         row = layout.row(align=True)
         split = row.split(factor=factor)

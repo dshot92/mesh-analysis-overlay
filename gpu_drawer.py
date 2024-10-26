@@ -20,7 +20,6 @@ class GPUDrawer:
         self.show_tris = True
         self.show_quads = True
         self.show_ngons = True
-        self.show_poles = True
         self.show_singles = True
         self.show_non_manifold_edges = True
         self.show_non_manifold_verts = True
@@ -33,7 +32,6 @@ class GPUDrawer:
         self.show_tris = props.show_tris
         self.show_quads = props.show_quads
         self.show_ngons = props.show_ngons
-        self.show_poles = props.show_poles
         self.show_singles = props.show_singles
         self.show_non_manifold_edges = props.show_non_manifold_edges
         self.show_non_manifold_verts = props.show_non_manifold_verts
@@ -66,14 +64,6 @@ class GPUDrawer:
                     self.mesh_analyzer.ngons_data,
                     props.ngons_color,
                     "TRIS",
-                )
-
-            if self.show_poles:
-                self._draw_elements(
-                    self.mesh_analyzer.poles_data,
-                    props.poles_color,
-                    "POINTS",
-                    size=props.overlay_vertex_radius,
                 )
 
             if self.show_singles:
