@@ -16,7 +16,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     show_tris: BoolProperty(
         name="Show Triangles",
         description="Show triangle overlays",
-        default=True,
+        default=False,
     )
     tris_color: FloatVectorProperty(
         name="Triangles Color",
@@ -30,7 +30,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     show_quads: BoolProperty(
         name="Show Quads",
         description="Show quad overlays",
-        default=True,
+        default=False,
     )
     quads_color: FloatVectorProperty(
         name="Quads Color",
@@ -44,7 +44,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     show_ngons: BoolProperty(
         name="Show N-gons",
         description="Show n-gon overlays",
-        default=True,
+        default=False,
     )
     ngons_color: FloatVectorProperty(
         name="N-gons Color",
@@ -58,7 +58,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     show_non_planar: BoolProperty(
         name="Show Non-Planar Faces",
         description="Show faces that are not planar",
-        default=True,
+        default=False,
     )
     non_planar_color: FloatVectorProperty(
         name="Non-Planar Faces Color",
@@ -73,7 +73,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     show_non_manifold_edges: BoolProperty(
         name="Show Non-Manifold Edges",
         description="Show non-manifold edges",
-        default=True,
+        default=False,
     )
     non_manifold_edges_color: FloatVectorProperty(
         name="Non-Manifold Edges Color",
@@ -87,7 +87,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     show_sharp_edges: BoolProperty(
         name="Show Sharp Edges",
         description="Show sharp edges",
-        default=True,
+        default=False,
     )
     sharp_edges_color: FloatVectorProperty(
         name="Sharp Edges Color",
@@ -101,7 +101,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     show_seam_edges: BoolProperty(
         name="Show Seam Edges",
         description="Show UV seam edges",
-        default=True,
+        default=False,
     )
     seam_edges_color: FloatVectorProperty(
         name="Seam Edges Color",
@@ -116,7 +116,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     show_singles: BoolProperty(
         name="Show Singles",
         description="Show single vertex indicators",
-        default=True,
+        default=False,
     )
     singles_color: FloatVectorProperty(
         name="Singles Color",
@@ -130,7 +130,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     show_non_manifold_verts: BoolProperty(
         name="Show Non-Manifold Vertices",
         description="Show non-manifold vertices",
-        default=True,
+        default=False,
     )
     non_manifold_verts_color: FloatVectorProperty(
         name="Non-Manifold Vertices Color",
@@ -144,7 +144,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     show_n_poles: BoolProperty(
         name="Show N-Poles (3 edges)",
         description="Show vertices with 3 edges",
-        default=True,
+        default=False,
     )
     n_poles_color: FloatVectorProperty(
         name="N-Poles Color",
@@ -158,7 +158,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     show_e_poles: BoolProperty(
         name="Show E-Poles (5 edges)",
         description="Show vertices with 5 edges",
-        default=True,
+        default=False,
     )
     e_poles_color: FloatVectorProperty(
         name="E-Poles Color",
@@ -172,7 +172,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     show_high_poles: BoolProperty(
         name="Show High-Poles (6+ edges)",
         description="Show vertices with 6 or more edges",
-        default=True,
+        default=False,
     )
     high_poles_color: FloatVectorProperty(
         name="High-Poles Color",
