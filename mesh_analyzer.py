@@ -177,22 +177,22 @@ class MeshAnalyzer:
         # Create BMesh
         bm = bmesh.new()
         bm.from_mesh(obj.data)
-        bm.faces.ensure_lookup_table()
-        bm.verts.ensure_lookup_table()
-        bm.edges.ensure_lookup_table()
 
         # Process vertices
         if analyze_verts:
+            bm.verts.ensure_lookup_table()
             for vert in bm.verts:
                 self._process_vertex(vert, matrix_world, props)
 
         # Process edges
         if analyze_edges:
+            bm.edges.ensure_lookup_table()
             for edge in bm.edges:
                 self._process_edge(edge, matrix_world, props)
 
         # Process faces
         if analyze_faces:
+            bm.faces.ensure_lookup_table()
             for face in bm.faces:
                 self._process_face(face, matrix_world, props)
 
