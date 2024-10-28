@@ -5,14 +5,14 @@
 # ----------------------------------------------------------
 
 from collections import OrderedDict
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple
 from mathutils import Vector
 from dataclasses import dataclass, field
 import bmesh
 import bpy
 import math
 
-debug_print = True
+debug_print = False
 
 
 @dataclass
