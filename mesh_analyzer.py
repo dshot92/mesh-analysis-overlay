@@ -93,19 +93,32 @@ class MeshAnalyzer:
             for v in face.verts
         ]
 
-    def _process_face(self, face, matrix_world, offset, face_type):
-        """Process any face type by triangulating it"""
+    def _process_face(self, face, matrix_world, props):
+        """Process a single face for triangles, quads, ngons and planarity"""
+        vert_count = len(face.verts)
+        offset = props.overlay_offset
         offset_verts = self._get_face_data_with_offset(face, matrix_world, offset)
 
-        # For triangles, just add the 3 vertices
-        if len(face.verts) == 3:
-            self.face_data[face_type].extend(offset_verts[:3])
-            return
+        # Triangulate and store vertices based on face type
+        if vert_count == 3 and props.show_tris_faces:
+            self.face_data["tris"].extend(offset_verts)
+        elif vert_count == 4 and props.show_quads_faces:
+            self.face_data["quads"].extend(
+                [offset_verts[i] for i in (0, 1, 2, 0, 2, 3)]
+            )
+        elif vert_count > 4 and props.show_ngons_faces:
+            for i in range(1, vert_count - 1):
+                self.face_data["ngons"].extend(
+                    [offset_verts[0], offset_verts[i], offset_verts[i + 1]]
+                )
 
-        # For quads and n-gons, triangulate using fan method
-        for i in range(1, len(face.verts) - 1):
-            tri_verts = [offset_verts[idx] for idx in (0, i, i + 1)]
-            self.face_data[face_type].extend(tri_verts)
+        # Check planarity for faces with more than 3 vertices
+        if vert_count > 3 and props.show_non_planar_faces:
+            if not self.is_face_planar(face, props.non_planar_threshold):
+                for i in range(1, vert_count - 1):
+                    self.face_data["non_planar"].extend(
+                        [offset_verts[0], offset_verts[i], offset_verts[i + 1]]
+                    )
 
     def _get_vertex_data_with_offset(self, vert, matrix_world, offset) -> Vector:
         """Get transformed and offset vertex position"""
@@ -181,17 +194,6 @@ class MeshAnalyzer:
         # Process faces
         if analyze_faces:
             for face in bm.faces:
-                vert_count = len(face.verts)
-
-                if vert_count == 3 and props.show_tris_faces:
-                    self._process_face(face, matrix_world, offset, "tris")
-                elif vert_count == 4 and props.show_quads_faces:
-                    self._process_face(face, matrix_world, offset, "quads")
-                elif vert_count > 4 and props.show_ngons_faces:
-                    self._process_face(face, matrix_world, offset, "ngons")
-
-                if vert_count > 3 and props.show_non_planar_faces:
-                    if not self.is_face_planar(face, props.non_planar_threshold):
-                        self._process_face(face, matrix_world, offset, "non_planar")
+                self._process_face(face, matrix_world, props)
 
         bm.free()
