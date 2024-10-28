@@ -199,13 +199,13 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     overlay_offset: FloatProperty(
         name="Overlay Face Offset",
         description="Distance to offset the overlay faces",
-        default=0.01,
+        default=0.001,
         precision=4,
     )
     overlay_vertex_radius: FloatProperty(
         name="Overlay Vertex Radius",
         description="Size of the overlay vertex indicators",
-        default=10.0,
+        default=5.0,
         min=1.0,
         max=50.0,
     )
