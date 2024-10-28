@@ -5,7 +5,8 @@
 # ----------------------------------------------------------
 
 import bpy
-from . import operators  # Keep this import
+
+from .operators import drawer
 
 
 class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
@@ -26,7 +27,7 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             "view3d.mesh_analysis_overlay",
             text="Show Mesh Overlay",
             icon="OVERLAY",
-            depress=operators.drawer.is_running,
+            depress=drawer.is_running,
         )
 
         layout.label(text="Faces")
