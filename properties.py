@@ -11,12 +11,12 @@ from bpy.types import PropertyGroup
 
 class Mesh_Analysis_Overlay_Props(PropertyGroup):
     # FACES
-    show_tris_faces: BoolProperty(
+    show_tri_faces: BoolProperty(
         name="Show Triangles",
         description="Show triangle overlays",
         default=False,
     )
-    tris_faces_color: FloatVectorProperty(
+    tri_faces_color: FloatVectorProperty(
         name="Triangles Color",
         subtype="COLOR",
         default=(1.0, 0.0, 0.0, 0.5),
@@ -25,12 +25,12 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=1.0,
     )
 
-    show_quads_faces: BoolProperty(
+    show_quad_faces: BoolProperty(
         name="Show Quads",
         description="Show quad overlays",
         default=False,
     )
-    quads_faces_color: FloatVectorProperty(
+    quad_faces_color: FloatVectorProperty(
         name="Quads Color",
         subtype="COLOR",
         default=(0.0, 1.0, 0.0, 0.5),
@@ -39,12 +39,12 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=1.0,
     )
 
-    show_ngons_faces: BoolProperty(
+    show_ngon_faces: BoolProperty(
         name="Show N-gons",
         description="Show n-gon overlays",
         default=False,
     )
-    ngons_faces_color: FloatVectorProperty(
+    ngon_faces_color: FloatVectorProperty(
         name="N-gons Color",
         subtype="COLOR",
         default=(0.0, 0.0, 1.0, 0.5),
@@ -125,12 +125,12 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     )
 
     # VERTICES
-    show_singles_vertices: BoolProperty(
+    show_single_vertices: BoolProperty(
         name="Show Singles",
         description="Show single vertex indicators",
         default=False,
     )
-    singles_vertices_color: FloatVectorProperty(
+    single_vertices_color: FloatVectorProperty(
         name="Singles Color",
         subtype="COLOR",
         default=(1.0, 1.0, 0.0, 0.5),
@@ -153,12 +153,12 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=1.0,
     )
 
-    show_n_poles_vertices: BoolProperty(
+    show_n_pole_vertices: BoolProperty(
         name="Show N-Poles (3 edges)",
         description="Show vertices with 3 edges",
         default=False,
     )
-    n_poles_vertices_color: FloatVectorProperty(
+    n_pole_vertices_color: FloatVectorProperty(
         name="N-Poles Color",
         subtype="COLOR",
         default=(1.0, 0.5, 0.0, 0.5),
@@ -167,12 +167,12 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=1.0,
     )
 
-    show_e_poles_vertices: BoolProperty(
+    show_e_pole_vertices: BoolProperty(
         name="Show E-Poles (5 edges)",
         description="Show vertices with 5 edges",
         default=False,
     )
-    e_poles_vertices_color: FloatVectorProperty(
+    e_pole_vertices_color: FloatVectorProperty(
         name="E-Poles Color",
         subtype="COLOR",
         default=(0.0, 1.0, 1.0, 0.5),
@@ -181,12 +181,12 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=1.0,
     )
 
-    show_high_poles_vertices: BoolProperty(
+    show_high_pole_vertices: BoolProperty(
         name="Show High-Poles (6+ edges)",
         description="Show vertices with 6 or more edges",
         default=False,
     )
-    high_poles_vertices_color: FloatVectorProperty(
+    high_pole_vertices_color: FloatVectorProperty(
         name="High-Poles Color",
         subtype="COLOR",
         default=(1.0, 0.0, 1.0, 0.5),

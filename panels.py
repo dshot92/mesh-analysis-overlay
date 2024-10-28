@@ -34,20 +34,20 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         # Triangles row
         row = layout.row(align=True)
         split = row.split(factor=factor)
-        split.prop(props, "show_tris_faces", text="Triangles")
-        split.prop(props, "tris_faces_color", text="")
+        split.prop(props, "show_tri_faces", text="Triangles")
+        split.prop(props, "tri_faces_color", text="")
 
         # Quads row
         row = layout.row(align=True)
         split = row.split(factor=factor)
-        split.prop(props, "show_quads_faces", text="Quads")
-        split.prop(props, "quads_faces_color", text="")
+        split.prop(props, "show_quad_faces", text="Quads")
+        split.prop(props, "quad_faces_color", text="")
 
         # N-gons row
         row = layout.row(align=True)
         split = row.split(factor=factor)
-        split.prop(props, "show_ngons_faces", text="N-Gons")
-        split.prop(props, "ngons_faces_color", text="")
+        split.prop(props, "show_ngon_faces", text="N-Gons")
+        split.prop(props, "ngon_faces_color", text="")
 
         # Non-planar faces row
         row = layout.row(align=True)
@@ -84,8 +84,8 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         # Singles row
         row = layout.row(align=True)
         split = row.split(factor=factor)
-        split.prop(props, "show_singles_vertices", text="Single Vertices")
-        split.prop(props, "singles_vertices_color", text="")
+        split.prop(props, "show_single_vertices", text="Single Vertices")
+        split.prop(props, "single_vertices_color", text="")
 
         # Non-manifold vertices row
         row = layout.row(align=True)
@@ -96,20 +96,20 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         # N-poles row
         row = layout.row(align=True)
         split = row.split(factor=factor)
-        split.prop(props, "show_n_poles_vertices", text="N-Poles (3)")
-        split.prop(props, "n_poles_vertices_color", text="")
+        split.prop(props, "show_n_pole_vertices", text="N-Poles (3)")
+        split.prop(props, "n_pole_vertices_color", text="")
 
         # E-poles row
         row = layout.row(align=True)
         split = row.split(factor=factor)
-        split.prop(props, "show_e_poles_vertices", text="E-Poles (5)")
-        split.prop(props, "e_poles_vertices_color", text="")
+        split.prop(props, "show_e_pole_vertices", text="E-Poles (5)")
+        split.prop(props, "e_pole_vertices_color", text="")
 
         # High-poles row
         row = layout.row(align=True)
         split = row.split(factor=factor)
-        split.prop(props, "show_high_poles_vertices", text="High-Poles (6+)")
-        split.prop(props, "high_poles_vertices_color", text="")
+        split.prop(props, "show_high_pole_vertices", text="High-Poles (6+)")
+        split.prop(props, "high_pole_vertices_color", text="")
 
         # Offset settings
         header, panel = layout.panel("panel_settings", default_closed=True)
