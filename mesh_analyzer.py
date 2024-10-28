@@ -30,7 +30,12 @@ class MeshAnalyzer:
             "high_poles": [],
             "non_manifold": [],
         }
-        self.edge_data = {"non_manifold": [], "sharp": [], "seam": []}
+        self.edge_data = {
+            "non_manifold": [],
+            "sharp": [],
+            "seam": [],
+            "boundary": [],  # Add boundary edges
+        }
 
     def _should_analyze(self, props) -> Tuple[bool, bool, bool]:
         """Determine which mesh elements need analysis"""
@@ -49,6 +54,7 @@ class MeshAnalyzer:
                 props.show_non_manifold_edges,
                 props.show_sharp_edges,
                 props.show_seam_edges,
+                props.show_boundary_edges,  # Add boundary check
             ]
         )
 
@@ -142,9 +148,16 @@ class MeshAnalyzer:
             self.vertex_data["non_manifold"].append(world_pos)
 
     def _process_edge(self, edge, matrix_world, props):
-        """Process a single edge for manifold status, sharpness and seams"""
+        """Process a single edge for manifold status, sharpness, seams and boundaries"""
         v1 = matrix_world @ edge.verts[0].co
         v2 = matrix_world @ edge.verts[1].co
+
+        # Debug print for boundary edges
+        if len(edge.link_faces) == 1:
+            print(f"Found boundary edge: {len(edge.link_faces)} linked faces")
+            if props.show_boundary_edges:
+                self.edge_data["boundary"].extend([v1, v2])
+                print("Added boundary edge to display")
 
         if not edge.is_manifold and props.show_non_manifold_edges:
             self.edge_data["non_manifold"].extend([v1, v2])

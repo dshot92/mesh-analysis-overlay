@@ -28,6 +28,7 @@ class GPUDrawer:
         "sharp_edges": ("show_sharp_edges", "LINES"),
         "seam_edges": ("show_seam_edges", "LINES"),
         "non_planar": ("show_non_planar", "TRIS"),
+        "boundary_edges": ("show_boundary_edges", "LINES"),
     }
 
     def __init__(self) -> None:
@@ -154,6 +155,10 @@ class GPUDrawer:
             "non_planar": (
                 self.mesh_analyzer.face_data["non_planar"]["verts"],
                 self.scene_props.non_planar_color,
+            ),
+            "boundary_edges": (
+                self.mesh_analyzer.edge_data["boundary"],
+                self.scene_props.boundary_edges_color,
             ),
         }
 

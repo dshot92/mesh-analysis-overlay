@@ -111,6 +111,19 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         min=0.0,
         max=1.0,
     )
+    show_boundary_edges: BoolProperty(
+        name="Show Boundary Edges",
+        description="Display edges that are on mesh boundaries",
+        default=False,
+    )
+    boundary_edges_color: FloatVectorProperty(
+        name="Boundary Edges Color",
+        subtype="COLOR",
+        default=(0.0, 1.0, 1.0, 0.5),  # Orange color
+        size=4,
+        min=0.0,
+        max=1.0,
+    )
 
     ### VERTICES
     show_singles: BoolProperty(
