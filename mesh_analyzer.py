@@ -119,6 +119,8 @@ class MeshAnalyzer:
         # LRU cache with max size 10
         self.cache = OrderedDict()
         self.MAX_CACHE_SIZE = 10
+        # Add mesh revision tracking
+        self.last_mesh_revision = {}
 
     def clear_data(self):
         self.face_data = {
@@ -335,9 +337,21 @@ class MeshAnalyzer:
         """Main analysis method"""
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
 
-        # Ensure object is valid and in correct mode
         if not obj or obj.type != "MESH":
             return
+
+        # Check if mesh has been modified
+        current_revision = obj.data.id_data.id_properties_ensure()
+        if obj.name in self.last_mesh_revision:
+            if self.last_mesh_revision[obj.name] != current_revision:
+                # Mesh was modified, invalidate cache
+                if obj.name in self.cache:
+                    del self.cache[obj.name]
+                if debug_print:
+                    print(f"Cache invalidated for {obj.name} due to mesh modification")
+
+        # Update revision tracking
+        self.last_mesh_revision[obj.name] = current_revision
 
         # Clear existing data before analysis
         self.clear_data()
