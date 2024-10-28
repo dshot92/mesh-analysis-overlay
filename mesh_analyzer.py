@@ -4,13 +4,14 @@
 # Author: Daniele Stochino (dshot92)
 # ----------------------------------------------------------
 
-from collections import OrderedDict
-from typing import List, Tuple
+from typing import Optional
 
 import bmesh
 import bpy
 import math
 from bpy.types import Object
+
+debug_print = True
 
 
 class MeshAnalyzer:
@@ -18,25 +19,122 @@ class MeshAnalyzer:
         if not obj or obj.type != "MESH":
             raise ValueError("Invalid mesh object")
 
-        self.clear_data()
         self.active_object = obj
         self.analyzed_features = set()
-        self.update(obj)  # Perform initial analysis
+        self.cache = MeshAnalyzerCache.get_instance()
+        self.clear_data()
+        self.update(obj)
+
+    def clear_data(self):
+        self.face_data = {
+            "tri": ([], []),
+            "quad": ([], []),
+            "ngon": ([], []),
+            "non_planar": ([], []),
+        }
+        self.vertex_data = {
+            "single": ([], []),
+            "n_pole": ([], []),
+            "e_pole": ([], []),
+            "high_pole": ([], []),
+            "non_manifold": ([], []),
+        }
+        self.edge_data = {
+            "non_manifold": ([], []),
+            "sharp": ([], []),
+            "seam": ([], []),
+            "boundary": ([], []),
+        }
 
     def update(self, obj):
-        """Update analysis if needed"""
+        """Update analysis based on enabled toggles"""
         if obj != self.active_object:
-            return  # Only analyze the object we were initialized with
+            return
 
-        # Get currently enabled features from properties
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
-        enabled_features = self._get_enabled_features(props)
 
-        # Analyze any enabled features that haven't been analyzed yet
-        for feature in enabled_features:
-            if feature not in self.analyzed_features:
+        # Get current toggle states
+        current_states = {}
+        for data_type, toggles in [
+            (self.vertex_data, "vertices"),
+            (self.edge_data, "edges"),
+            (self.face_data, "faces"),
+        ]:
+            for feature in data_type.keys():
+                toggle_name = f"show_{feature}_{toggles}"
+                current_states[feature] = getattr(props, toggle_name, False)
+
+        # Handle toggle changes
+        for feature, is_enabled in current_states.items():
+            if is_enabled and feature not in self.analyzed_features:
                 self.analyze_specific_feature(obj, feature)
-                self.analyzed_features.add(feature)
+            elif not is_enabled and feature in self.analyzed_features:
+                self.clear_feature_data(feature)
+
+    def clear_feature_data(self, feature):
+        """Clear data for a specific feature"""
+        for data_dict in [self.vertex_data, self.edge_data, self.face_data]:
+            if feature in data_dict:
+                data_dict[feature] = ([], [])
+        self.analyzed_features.discard(feature)
+
+    def analyze_specific_feature(self, obj, feature):
+        """Analyze a specific feature and cache results"""
+        if not obj or obj.type != "MESH":
+            return
+
+        # Try to get cached data first
+        cached_data = self.cache.get_feature_data(obj.name, feature)
+        if cached_data:
+            if debug_print:
+                print(f"🟢 Cache HIT for {feature}")
+            self._store_cached_data(feature, cached_data)
+            self.analyzed_features.add(feature)
+            return
+
+        if debug_print:
+            print(f"🔴 Cache MISS for {feature}")
+        # Analyze if not cached
+        bm = bmesh.new()
+        bm.from_mesh(obj.data)
+        try:
+            self._analyze_feature(bm, obj.matrix_world, feature)
+            # Cache the new results
+            self._cache_feature_data(obj.name, feature)
+            self.analyzed_features.add(feature)
+        finally:
+            bm.free()
+
+    def _store_cached_data(self, feature, data):
+        """Store cached data in appropriate data structure"""
+        if feature in self.vertex_data:
+            self.vertex_data[feature] = data
+        elif feature in self.edge_data:
+            self.edge_data[feature] = data
+        elif feature in self.face_data:
+            self.face_data[feature] = data
+
+    def _cache_feature_data(self, obj_name, feature):
+        """Cache feature data"""
+        data = None
+        if feature in self.vertex_data:
+            data = self.vertex_data[feature]
+        elif feature in self.edge_data:
+            data = self.edge_data[feature]
+        elif feature in self.face_data:
+            data = self.face_data[feature]
+
+        if data:
+            self.cache.add_feature_data(obj_name, feature, data)
+
+    def _analyze_feature(self, bm, matrix_world, feature):
+        """Unified analysis method"""
+        if feature in self.vertex_data:
+            self._analyze_vertex_feature(bm, matrix_world, feature)
+        elif feature in self.edge_data:
+            self._analyze_edge_feature(bm, matrix_world, feature)
+        elif feature in self.face_data:
+            self._analyze_face_feature(bm, matrix_world, feature)
 
     def _get_enabled_features(self, props):
         """Get list of currently enabled features from properties"""
@@ -59,30 +157,6 @@ class MeshAnalyzer:
 
         return enabled
 
-    def clear_data(self):
-        # Initialize with tuples of (vertices, normals)
-        self.face_data = {
-            "tri": ([], []),
-            "quad": ([], []),
-            "ngon": ([], []),
-            "non_planar": ([], []),
-        }
-
-        self.vertex_data = {
-            "single": ([], []),
-            "n_pole": ([], []),
-            "e_pole": ([], []),
-            "high_pole": ([], []),
-            "non_manifold": ([], []),
-        }
-
-        self.edge_data = {
-            "non_manifold": ([], []),
-            "sharp": ([], []),
-            "seam": ([], []),
-            "boundary": ([], []),
-        }
-
     def is_face_planar(self, face, threshold_degrees: float) -> bool:
         """Check if a face is planar within the given threshold"""
         if len(face.verts) <= 3:
@@ -99,24 +173,6 @@ class MeshAnalyzer:
             if angle > threshold_degrees:
                 return False
         return True
-
-    def analyze_specific_feature(self, obj, feature_type: str):
-        """Analyze a single feature type"""
-        if not obj or obj.type != "MESH":
-            return
-
-        bm = bmesh.new()
-        bm.from_mesh(obj.data)
-        matrix_world = obj.matrix_world
-
-        if feature_type in self.vertex_data:
-            self._analyze_vertex_feature(bm, matrix_world, feature_type)
-        elif feature_type in self.edge_data:
-            self._analyze_edge_feature(bm, matrix_world, feature_type)
-        elif feature_type in self.face_data:
-            self._analyze_face_feature(bm, matrix_world, feature_type)
-
-        bm.free()
 
     def _analyze_vertex_feature(self, bm, matrix_world, feature_type):
         """Analyze a specific vertex feature"""
@@ -187,3 +243,58 @@ class MeshAnalyzer:
             and not self.is_face_planar(f, p.non_planar_threshold),
         }
         return conditions.get(feature_type, lambda f, _: False)(face, props)
+
+
+class MeshAnalyzerCache:
+    _instance = None
+
+    def __init__(self):
+        if self._instance is not None:
+            raise Exception("This class is a singleton!")
+        self.cache = {}  # {obj_name: {feature: data}}
+        self.max_cache_size = 4
+        self.access_history = []  # Track LRU
+
+    @classmethod
+    def get_instance(cls):
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    def _update_access_history(self, obj_name, feature):
+        """Update LRU tracking"""
+        key = (obj_name, feature)
+        if key in self.access_history:
+            self.access_history.remove(key)
+        self.access_history.append(key)
+
+    def _ensure_cache_size(self):
+        """Maintain cache size limit using LRU"""
+        while len(self.cache) > self.max_cache_size:
+            oldest = self.access_history.pop(0)
+            obj_name, feature = oldest
+            if obj_name in self.cache:
+                if feature in self.cache[obj_name]:
+                    del self.cache[obj_name][feature]
+                if not self.cache[obj_name]:
+                    del self.cache[obj_name]
+
+    def get_feature_data(self, obj_name: str, feature: str):
+        """Get cached feature data"""
+        if obj_name in self.cache and feature in self.cache[obj_name]:
+            self._update_access_history(obj_name, feature)
+            return self.cache[obj_name][feature]
+        return None
+
+    def add_feature_data(self, obj_name: str, feature: str, data: tuple):
+        """Add feature data to cache"""
+        if obj_name not in self.cache:
+            self.cache[obj_name] = {}
+        self.cache[obj_name][feature] = data
+        self._update_access_history(obj_name, feature)
+        self._ensure_cache_size()
+
+    def clear(self):
+        """Clear all cached data"""
+        self.cache.clear()
+        self.access_history.clear()
