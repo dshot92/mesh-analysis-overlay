@@ -81,8 +81,8 @@ class GPUDrawer:
                 self.toggle_states[flag_name] = new_state
                 setattr(self, flag_name, new_state)
 
-                # If enabling and batch doesn't exist yet, analyze
-                if new_state and key not in self.batches:
+                # If enabling and not yet analyzed, perform targeted analysis
+                if new_state and key not in self.analyzed_overlays:
                     obj = bpy.context.active_object
                     if self._is_valid_mesh_object(obj):
                         self._analyze_mesh(obj)
@@ -96,14 +96,6 @@ class GPUDrawer:
     def draw(self) -> None:
         self.update_visibility()
         obj = bpy.context.active_object
-
-        # Check for edit mode changes
-        if obj and obj.mode == "EDIT":
-            self.batches.clear()
-            self._analyze_mesh(obj)
-        elif obj != self.active_object and self._is_valid_mesh_object(obj):
-            self.batches.clear()
-            self._analyze_mesh(obj)
 
         if self._is_valid_mesh_object(obj):
             self._setup_gpu_state()
@@ -203,12 +195,6 @@ class GPUDrawer:
             return "POINTS"
         return "TRIS"
 
-    def _handle_mesh_update(self, scene, depsgraph) -> None:
-        obj = bpy.context.active_object
-        if obj and obj.mode == "EDIT":
-            self.batches.clear()
-            self._analyze_mesh(obj)
-
     def start(self) -> None:
         if self.is_running:
             return
@@ -217,7 +203,6 @@ class GPUDrawer:
         self.handle = bpy.types.SpaceView3D.draw_handler_add(
             self.draw, (), "WINDOW", "POST_VIEW"
         )
-        bpy.app.handlers.depsgraph_update_post.append(self._handle_mesh_update)
         self._initial_analysis()
         self.is_running = True
         self._force_viewport_redraw()
@@ -232,7 +217,6 @@ class GPUDrawer:
             return
         if self.handle is not None:
             bpy.types.SpaceView3D.draw_handler_remove(self.handle, "WINDOW")
-            bpy.app.handlers.depsgraph_update_post.remove(self._handle_mesh_update)
         self.handle = None
         self.is_running = False
         self.active_object = None
