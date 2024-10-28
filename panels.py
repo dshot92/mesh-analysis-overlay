@@ -33,41 +33,41 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         # Triangles row
         row = layout.row(align=True)
         split = row.split(factor=factor)
-        split.prop(props, "show_tris", text="Triangles")
-        split.prop(props, "tris_color", text="")
+        split.prop(props, "show_tris_faces", text="Triangles")
+        split.prop(props, "tris_faces_color", text="")
 
         # Quads row
         row = layout.row(align=True)
         split = row.split(factor=factor)
-        split.prop(props, "show_quads", text="Quads")
-        split.prop(props, "quads_color", text="")
+        split.prop(props, "show_quads_faces", text="Quads")
+        split.prop(props, "quads_faces_color", text="")
 
         # N-gons row
         row = layout.row(align=True)
         split = row.split(factor=factor)
-        split.prop(props, "show_ngons", text="N-Gons")
-        split.prop(props, "ngons_color", text="")
+        split.prop(props, "show_ngons_faces", text="N-Gons")
+        split.prop(props, "ngons_faces_color", text="")
 
-        # Add after other face-related rows
+        # Non-planar faces row
         row = layout.row(align=True)
         split = row.split(factor=factor)
-        split.prop(props, "show_non_planar", text="Non-Planar Faces")
-        split.prop(props, "non_planar_color", text="")
+        split.prop(props, "show_non_planar_faces", text="Non-Planar Faces")
+        split.prop(props, "non_planar_faces_color", text="")
 
         layout.label(text="Edges")
-        # Replace the single non-manifold row with two separate rows
+        # Non-manifold edges row
         row = layout.row(align=True)
         split = row.split(factor=factor)
         split.prop(props, "show_non_manifold_edges", text="Non-Manifold Edges")
         split.prop(props, "non_manifold_edges_color", text="")
 
-        # Add after the non-manifold edges row
+        # Sharp edges row
         row = layout.row(align=True)
         split = row.split(factor=factor)
         split.prop(props, "show_sharp_edges", text="Sharp Edges")
         split.prop(props, "sharp_edges_color", text="")
 
-        # Add after sharp edges row (line 62):
+        # Seam edges row
         row = layout.row(align=True)
         split = row.split(factor=factor)
         split.prop(props, "show_seam_edges", text="Seam Edges")
@@ -80,35 +80,35 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         split.prop(props, "boundary_edges_color", text="")
 
         layout.label(text="Vertices")
-        # Add after poles row
+        # Singles row
         row = layout.row(align=True)
         split = row.split(factor=factor)
-        split.prop(props, "show_singles", text="Single Vertices")
-        split.prop(props, "singles_color", text="")
+        split.prop(props, "show_singles_vertices", text="Single Vertices")
+        split.prop(props, "singles_vertices_color", text="")
 
-        # Non-manifold verts row
+        # Non-manifold vertices row
         row = layout.row(align=True)
         split = row.split(factor=factor)
-        split.prop(props, "show_non_manifold_verts", text="Non-Manifold Vertices")
-        split.prop(props, "non_manifold_verts_color", text="")
+        split.prop(props, "show_non_manifold_vertices", text="Non-Manifold Vertices")
+        split.prop(props, "non_manifold_vertices_color", text="")
 
-        # Add pole type rows after the existing poles section
+        # N-poles row
         row = layout.row(align=True)
         split = row.split(factor=factor)
-        split.prop(props, "show_n_poles", text="N-Poles (3)")
-        split.prop(props, "n_poles_color", text="")
+        split.prop(props, "show_n_poles_vertices", text="N-Poles (3)")
+        split.prop(props, "n_poles_vertices_color", text="")
 
         # E-poles row
         row = layout.row(align=True)
         split = row.split(factor=factor)
-        split.prop(props, "show_e_poles", text="E-Poles (5)")
-        split.prop(props, "e_poles_color", text="")
+        split.prop(props, "show_e_poles_vertices", text="E-Poles (5)")
+        split.prop(props, "e_poles_vertices_color", text="")
 
         # High-poles row
         row = layout.row(align=True)
         split = row.split(factor=factor)
-        split.prop(props, "show_high_poles", text="High-Poles (6+)")
-        split.prop(props, "high_poles_color", text="")
+        split.prop(props, "show_high_poles_vertices", text="High-Poles (6+)")
+        split.prop(props, "high_poles_vertices_color", text="")
 
         # Offset settings
         header, panel = layout.panel("panel_settings", default_closed=True)

@@ -5,20 +5,18 @@
 # ----------------------------------------------------------
 
 import bpy
-
 from bpy.props import BoolProperty, FloatVectorProperty, FloatProperty
 from bpy.types import PropertyGroup
 
 
 class Mesh_Analysis_Overlay_Props(PropertyGroup):
-
     # FACES
-    show_tris: BoolProperty(
+    show_tris_faces: BoolProperty(
         name="Show Triangles",
         description="Show triangle overlays",
         default=False,
     )
-    tris_color: FloatVectorProperty(
+    tris_faces_color: FloatVectorProperty(
         name="Triangles Color",
         subtype="COLOR",
         default=(1.0, 0.0, 0.0, 0.5),
@@ -27,12 +25,12 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=1.0,
     )
 
-    show_quads: BoolProperty(
+    show_quads_faces: BoolProperty(
         name="Show Quads",
         description="Show quad overlays",
         default=False,
     )
-    quads_color: FloatVectorProperty(
+    quads_faces_color: FloatVectorProperty(
         name="Quads Color",
         subtype="COLOR",
         default=(0.0, 1.0, 0.0, 0.5),
@@ -41,12 +39,12 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=1.0,
     )
 
-    show_ngons: BoolProperty(
+    show_ngons_faces: BoolProperty(
         name="Show N-gons",
         description="Show n-gon overlays",
         default=False,
     )
-    ngons_color: FloatVectorProperty(
+    ngons_faces_color: FloatVectorProperty(
         name="N-gons Color",
         subtype="COLOR",
         default=(0.0, 0.0, 1.0, 0.5),
@@ -55,15 +53,15 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=1.0,
     )
 
-    show_non_planar: BoolProperty(
+    show_non_planar_faces: BoolProperty(
         name="Show Non-Planar Faces",
         description="Show faces that are not planar",
         default=False,
     )
-    non_planar_color: FloatVectorProperty(
+    non_planar_faces_color: FloatVectorProperty(
         name="Non-Planar Faces Color",
         subtype="COLOR",
-        default=(1.0, 0.7, 0.0, 0.5),  # Orange-yellow with 0.5 alpha
+        default=(1.0, 0.7, 0.0, 0.5),
         size=4,
         min=0.0,
         max=1.0,
@@ -78,7 +76,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     non_manifold_edges_color: FloatVectorProperty(
         name="Non-Manifold Edges Color",
         subtype="COLOR",
-        default=(1.0, 0.5, 0.0, 0.5),  # Orange with 0.5 alpha
+        default=(1.0, 0.5, 0.0, 0.5),
         size=4,
         min=0.0,
         max=1.0,
@@ -92,7 +90,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     sharp_edges_color: FloatVectorProperty(
         name="Sharp Edges Color",
         subtype="COLOR",
-        default=(1.0, 1.0, 1.0, 0.5),  # White with 0.5 alpha
+        default=(1.0, 1.0, 1.0, 0.5),
         size=4,
         min=0.0,
         max=1.0,
@@ -106,11 +104,12 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     seam_edges_color: FloatVectorProperty(
         name="Seam Edges Color",
         subtype="COLOR",
-        default=(1.0, 0.0, 0.0, 0.5),  # Red with 0.5 alpha
+        default=(1.0, 0.0, 0.0, 0.5),
         size=4,
         min=0.0,
         max=1.0,
     )
+
     show_boundary_edges: BoolProperty(
         name="Show Boundary Edges",
         description="Display edges that are on mesh boundaries",
@@ -119,78 +118,78 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     boundary_edges_color: FloatVectorProperty(
         name="Boundary Edges Color",
         subtype="COLOR",
-        default=(0.0, 1.0, 1.0, 0.5),  # Orange color
+        default=(0.0, 1.0, 1.0, 0.5),
         size=4,
         min=0.0,
         max=1.0,
     )
 
-    ### VERTICES
-    show_singles: BoolProperty(
+    # VERTICES
+    show_singles_vertices: BoolProperty(
         name="Show Singles",
         description="Show single vertex indicators",
         default=False,
     )
-    singles_color: FloatVectorProperty(
+    singles_vertices_color: FloatVectorProperty(
         name="Singles Color",
         subtype="COLOR",
-        default=(1.0, 1.0, 0.0, 0.5),  # Yellow with 0.5 alpha
+        default=(1.0, 1.0, 0.0, 0.5),
         size=4,
         min=0.0,
         max=1.0,
     )
 
-    show_non_manifold_verts: BoolProperty(
+    show_non_manifold_vertices: BoolProperty(
         name="Show Non-Manifold Vertices",
         description="Show non-manifold vertices",
         default=False,
     )
-    non_manifold_verts_color: FloatVectorProperty(
+    non_manifold_vertices_color: FloatVectorProperty(
         name="Non-Manifold Vertices Color",
         subtype="COLOR",
-        default=(1.0, 0.0, 0.5, 0.5),  # Pink with 0.5 alpha
+        default=(1.0, 0.0, 0.5, 0.5),
         size=4,
         min=0.0,
         max=1.0,
     )
 
-    show_n_poles: BoolProperty(
+    show_n_poles_vertices: BoolProperty(
         name="Show N-Poles (3 edges)",
         description="Show vertices with 3 edges",
         default=False,
     )
-    n_poles_color: FloatVectorProperty(
+    n_poles_vertices_color: FloatVectorProperty(
         name="N-Poles Color",
         subtype="COLOR",
-        default=(1.0, 0.5, 0.0, 0.5),  # Orange
+        default=(1.0, 0.5, 0.0, 0.5),
         size=4,
         min=0.0,
         max=1.0,
     )
 
-    show_e_poles: BoolProperty(
+    show_e_poles_vertices: BoolProperty(
         name="Show E-Poles (5 edges)",
         description="Show vertices with 5 edges",
         default=False,
     )
-    e_poles_color: FloatVectorProperty(
+    e_poles_vertices_color: FloatVectorProperty(
         name="E-Poles Color",
         subtype="COLOR",
-        default=(0.0, 1.0, 1.0, 0.5),  # Cyan
+        default=(0.0, 1.0, 1.0, 0.5),
         size=4,
         min=0.0,
         max=1.0,
     )
 
-    show_high_poles: BoolProperty(
+    show_high_poles_vertices: BoolProperty(
         name="Show High-Poles (6+ edges)",
         description="Show vertices with 6 or more edges",
         default=False,
     )
-    high_poles_color: FloatVectorProperty(
+    high_poles_vertices_color: FloatVectorProperty(
         name="High-Poles Color",
         subtype="COLOR",
-        default=(1.0, 0.0, 1.0, 0.5),  # Magenta
+        default=(1.0, 0.0, 1.0, 0.5),
         size=4,
         min=0.0,
         max=1.0,

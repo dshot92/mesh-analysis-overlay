@@ -41,11 +41,11 @@ class MeshAnalyzer:
         """Determine which mesh elements need analysis"""
         analyze_verts = any(
             [
-                props.show_singles,
-                props.show_non_manifold_verts,
-                props.show_n_poles,
-                props.show_e_poles,
-                props.show_high_poles,
+                props.show_singles_vertices,
+                props.show_non_manifold_vertices,
+                props.show_n_poles_vertices,
+                props.show_e_poles_vertices,
+                props.show_high_poles_vertices,
             ]
         )
 
@@ -59,7 +59,12 @@ class MeshAnalyzer:
         )
 
         analyze_faces = any(
-            [props.show_tris, props.show_quads, props.show_ngons, props.show_non_planar]
+            [
+                props.show_tris_faces,
+                props.show_quads_faces,
+                props.show_ngons_faces,
+                props.show_non_planar_faces,
+            ]
         )
 
         return analyze_verts, analyze_edges, analyze_faces
@@ -124,15 +129,15 @@ class MeshAnalyzer:
         world_pos = matrix_world @ vert.co
         edge_count = len(vert.link_edges)
 
-        if edge_count == 0 and props.show_singles:
+        if edge_count == 0 and props.show_singles_vertices:
             self.vertex_data["singles"].append(world_pos)
-        if edge_count == 3 and props.show_n_poles:
+        if edge_count == 3 and props.show_n_poles_vertices:
             self.vertex_data["n_poles"].append(world_pos)
-        if edge_count == 5 and props.show_e_poles:
+        if edge_count == 5 and props.show_e_poles_vertices:
             self.vertex_data["e_poles"].append(world_pos)
-        if edge_count >= 6 and props.show_high_poles:
+        if edge_count >= 6 and props.show_high_poles_vertices:
             self.vertex_data["high_poles"].append(world_pos)
-        if not vert.is_manifold and props.show_non_manifold_verts:
+        if not vert.is_manifold and props.show_non_manifold_vertices:
             self.vertex_data["non_manifold"].append(world_pos)
 
     def _process_edge(self, edge, matrix_world, props):
@@ -182,14 +187,14 @@ class MeshAnalyzer:
             for face in bm.faces:
                 vert_count = len(face.verts)
 
-                if vert_count == 3 and props.show_tris:
+                if vert_count == 3 and props.show_tris_faces:
                     self._process_triangle(face, matrix_world, offset)
-                elif vert_count == 4 and props.show_quads:
+                elif vert_count == 4 and props.show_quads_faces:
                     self._process_quad(face, matrix_world, offset)
-                elif vert_count > 4 and props.show_ngons:
+                elif vert_count > 4 and props.show_ngons_faces:
                     self._process_ngon(face, matrix_world, offset)
 
-                if props.show_non_planar and vert_count > 3:
+                if vert_count > 3 and props.show_non_planar_faces:
                     self._process_non_planar(
                         face, matrix_world, offset, props.non_planar_threshold
                     )

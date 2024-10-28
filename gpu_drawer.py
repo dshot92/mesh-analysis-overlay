@@ -15,26 +15,10 @@ from .mesh_analyzer import MeshAnalyzer
 
 
 class GPUDrawer:
-    PRIMITIVE_CONFIGS: Dict[str, Tuple[str, str]] = {
-        "tris": ("show_tris", "TRIS"),
-        "quads": ("show_quads", "TRIS"),
-        "ngons": ("show_ngons", "TRIS"),
-        "singles": ("show_singles", "POINTS"),
-        "non_manifold_edges": ("show_non_manifold_edges", "LINES"),
-        "non_manifold_verts": ("show_non_manifold_verts", "POINTS"),
-        "n_poles": ("show_n_poles", "POINTS"),
-        "e_poles": ("show_e_poles", "POINTS"),
-        "high_poles": ("show_high_poles", "POINTS"),
-        "sharp_edges": ("show_sharp_edges", "LINES"),
-        "seam_edges": ("show_seam_edges", "LINES"),
-        "non_planar": ("show_non_planar", "TRIS"),
-        "boundary_edges": ("show_boundary_edges", "LINES"),
-    }
-
     def __init__(self) -> None:
         self._initialize_state()
-        self._initialize_visibility_flags()
         self._initialize_gpu()
+        # Remove _initialize_visibility_flags() since we're using dynamic flags
 
     def _initialize_state(self) -> None:
         self.is_running: bool = False
@@ -58,8 +42,9 @@ class GPUDrawer:
         setattr(self, flag_name, getattr(self.scene_props, flag_name))
 
     def update_visibility(self) -> None:
-        for _, (flag_name, _) in self.PRIMITIVE_CONFIGS.items():
-            self._update_single_visibility(flag_name)
+        # Update based on dynamic configs
+        for key, (flag_name, _) in self._get_primitive_configs().items():
+            setattr(self, flag_name, getattr(self.scene_props, flag_name, True))
 
     def draw(self) -> None:
         self.update_visibility()
@@ -70,7 +55,10 @@ class GPUDrawer:
 
         if self._is_valid_mesh_object(obj):
             self._setup_gpu_state()
-            self._draw_all_elements()
+            # Use dynamic configs instead of PRIMITIVE_CONFIGS
+            for key, (flag, primitive) in self._get_primitive_configs().items():
+                if getattr(self, flag, False):  # Default to False if flag doesn't exist
+                    self._draw_element(key, primitive)
 
     def _is_valid_mesh_object(self, obj: Optional[Object]) -> bool:
         return obj is not None and obj.type == "MESH"
@@ -107,66 +95,30 @@ class GPUDrawer:
             gpu.state.line_width_set(self.scene_props.overlay_edge_width)
 
     def _create_all_batches(self, scene: Scene) -> None:
-        analyzer_data: Dict[str, Tuple[List[Any], Any]] = {
-            "tris": (
-                self.mesh_analyzer.face_data["tris"],
-                self.scene_props.tris_color,
-            ),
-            "quads": (
-                self.mesh_analyzer.face_data["quads"],
-                self.scene_props.quads_color,
-            ),
-            "ngons": (
-                self.mesh_analyzer.face_data["ngons"],
-                self.scene_props.ngons_color,
-            ),
-            "singles": (
-                self.mesh_analyzer.vertex_data["singles"],
-                self.scene_props.singles_color,
-            ),
-            "non_manifold_edges": (
-                self.mesh_analyzer.edge_data["non_manifold"],
-                self.scene_props.non_manifold_edges_color,
-            ),
-            "non_manifold_verts": (
-                self.mesh_analyzer.vertex_data["non_manifold"],
-                self.scene_props.non_manifold_verts_color,
-            ),
-            "n_poles": (
-                self.mesh_analyzer.vertex_data["n_poles"],
-                self.scene_props.n_poles_color,
-            ),
-            "e_poles": (
-                self.mesh_analyzer.vertex_data["e_poles"],
-                self.scene_props.e_poles_color,
-            ),
-            "high_poles": (
-                self.mesh_analyzer.vertex_data["high_poles"],
-                self.scene_props.high_poles_color,
-            ),
-            "sharp_edges": (
-                self.mesh_analyzer.edge_data["sharp"],
-                self.scene_props.sharp_edges_color,
-            ),
-            "seam_edges": (
-                self.mesh_analyzer.edge_data["seam"],
-                self.scene_props.seam_edges_color,
-            ),
-            "non_planar": (
-                self.mesh_analyzer.face_data["non_planar"],
-                self.scene_props.non_planar_color,
-            ),
-            "boundary_edges": (
-                self.mesh_analyzer.edge_data["boundary"],
-                self.scene_props.boundary_edges_color,
-            ),
-        }
+        self.batches = {}
 
-        self.batches = {
-            key: self._create_batch(key, data, color)
-            for key, (data, color) in analyzer_data.items()
-            if data
-        }
+        # Face data
+        for key in self.mesh_analyzer.face_data:
+            vertices = self.mesh_analyzer.face_data[key]
+            if vertices:
+                # Add _faces suffix for face colors
+                color = getattr(self.scene_props, f"{key}_faces_color")
+                self.batches[key] = self._create_batch(key, vertices, color)
+
+        # Edge data
+        for key in self.mesh_analyzer.edge_data:
+            vertices = self.mesh_analyzer.edge_data[key]
+            if vertices:
+                color = getattr(self.scene_props, f"{key}_edges_color")
+                self.batches[key] = self._create_batch(key, vertices, color)
+
+        # Vertex data
+        for key in self.mesh_analyzer.vertex_data:
+            vertices = self.mesh_analyzer.vertex_data[key]
+            if vertices:
+                # Add _vertices suffix for vertex colors
+                color = getattr(self.scene_props, f"{key}_vertices_color")
+                self.batches[key] = self._create_batch(key, vertices, color)
 
     def _create_batch(
         self, key: str, vertices: List[Any], color: Tuple[float, float, float, float]
@@ -174,7 +126,13 @@ class GPUDrawer:
         if not vertices:
             return None
 
-        primitive_type = self.PRIMITIVE_CONFIGS[key][1]
+        # Get primitive type based on which data dictionary contains the key
+        primitive_type = "TRIS"  # default
+        if key in self.mesh_analyzer.edge_data:
+            primitive_type = "LINES"
+        elif key in self.mesh_analyzer.vertex_data:
+            primitive_type = "POINTS"
+
         colors = [color] * len(vertices)
 
         return batch_for_shader(
@@ -243,3 +201,20 @@ class GPUDrawer:
         self.is_running = False
         self.active_object = None
         self.batches = {}
+
+    def _get_primitive_configs(self) -> Dict[str, Tuple[str, str]]:
+        configs = {}
+
+        # Face data (all use TRIS primitive)
+        for key in self.mesh_analyzer.face_data.keys():
+            configs[key] = (f"show_{key}_faces", "TRIS")
+
+        # Edge data (all use LINES primitive)
+        for key in self.mesh_analyzer.edge_data.keys():
+            configs[key] = (f"show_{key}_edges", "LINES")
+
+        # Vertex data (all use POINTS primitive)
+        for key in self.mesh_analyzer.vertex_data.keys():
+            configs[key] = (f"show_{key}_vertices", "POINTS")
+
+        return configs
