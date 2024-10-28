@@ -18,6 +18,13 @@ class GPUDrawer:
     def __init__(self) -> None:
         self._initialize_state()
         self._initialize_gpu()
+        # Initialize toggle states dict based on primitive configs
+        self.toggle_states = {
+            flag_name: False
+            for _, (flag_name, _) in self._get_primitive_configs().items()
+        }
+        # Track which overlays have been analyzed
+        self.analyzed_overlays = set()
 
     def _initialize_state(self) -> None:
         self.is_running: bool = False
@@ -54,29 +61,53 @@ class GPUDrawer:
         return configs
 
     def update_visibility(self) -> None:
-        # Update based on dynamic configs
+        # Update toggle states from scene properties
         for key, (flag_name, _) in self._get_primitive_configs().items():
-            setattr(self, flag_name, getattr(self.scene_props, flag_name, True))
+            new_state = getattr(self.scene_props, flag_name, False)
+            if new_state != self.toggle_states[flag_name]:
+                self.toggle_states[flag_name] = new_state
+                setattr(self, flag_name, new_state)
+
+                # If enabling and batch doesn't exist yet, analyze
+                if new_state and key not in self.batches:
+                    obj = bpy.context.active_object
+                    if self._is_valid_mesh_object(obj):
+                        self._analyze_mesh(obj)
+                        self._force_viewport_redraw()
+
+    def _force_viewport_redraw(self) -> None:
+        for area in bpy.context.screen.areas:
+            if area.type == "VIEW_3D":
+                area.tag_redraw()
 
     def draw(self) -> None:
         self.update_visibility()
         obj = bpy.context.active_object
 
-        if self._should_reanalyze_mesh(obj):
+        # Clear batches if active object changed
+        if obj != self.active_object and self._is_valid_mesh_object(obj):
+            self.batches.clear()  # Force recreation of batches for new object
             self._analyze_mesh(obj)
 
         if self._is_valid_mesh_object(obj):
             self._setup_gpu_state()
-            # Use dynamic configs instead of PRIMITIVE_CONFIGS
+            # Draw all currently visible elements
             for key, (flag, primitive) in self._get_primitive_configs().items():
-                if getattr(self, flag, False):  # Default to False if flag doesn't exist
+                if getattr(self, flag, False):  # If element is visible
                     self._draw_element(key, primitive)
+                # Update toggle state for tracking changes
+                self.toggle_states[flag] = getattr(self, flag, False)
 
     def _is_valid_mesh_object(self, obj: Optional[Object]) -> bool:
         return obj is not None and obj.type == "MESH"
 
     def _should_reanalyze_mesh(self, obj: Optional[Object]) -> bool:
-        return obj != self.active_object and self._is_valid_mesh_object(obj)
+        # Check if object changed and is valid
+        return (
+            obj is not None
+            and obj != self.active_object
+            and self._is_valid_mesh_object(obj)
+        )
 
     def _analyze_mesh(self, obj: Object) -> None:
         self.active_object = obj
@@ -147,64 +178,32 @@ class GPUDrawer:
             self.shader, primitive_type, {"pos": vertices, "color": colors}
         )
 
-    def depsgraph_update(self, scene: Scene, depsgraph: Any) -> None:
-        if not self._should_process_update():
-            return
-
-        obj = bpy.context.active_object
-        self._update_mesh_if_needed(obj, scene)
-        self._create_all_batches(scene)
-        self._redraw_viewport()
-
-    def _should_process_update(self) -> bool:
-        obj = bpy.context.active_object
-        return self.is_running and self._is_valid_mesh_object(obj)
-
-    def _update_mesh_if_needed(self, obj: Object, scene: Scene) -> None:
-        if obj.mode == "EDIT":
-            obj.update_from_editmode()
-        self.mesh_analyzer.analyze_mesh(obj)
-
-    def _redraw_viewport(self) -> None:
-        for window in bpy.context.window_manager.windows:
-            for area in window.screen.areas:
-                if area.type == "VIEW_3D":
-                    area.tag_redraw()
-
     def start(self) -> None:
         if self.is_running:
             return
 
-        self._register_handlers()
-        self._initial_analysis()
-        self.is_running = True
-
-    def _register_handlers(self) -> None:
+        # Register the draw handler
         self.handle = bpy.types.SpaceView3D.draw_handler_add(
             self.draw, (), "WINDOW", "POST_VIEW"
         )
-        bpy.app.handlers.depsgraph_update_post.append(self.depsgraph_update)
+        self._initial_analysis()
+        self.is_running = True
+        # Force initial redraw
+        self._force_viewport_redraw()
 
     def _initial_analysis(self) -> None:
         obj = bpy.context.active_object
         if self._is_valid_mesh_object(obj):
             self._analyze_mesh(obj)
-            self._redraw_viewport()
 
     def stop(self) -> None:
         if not self.is_running:
             return
-
-        self._unregister_handlers()
         self._cleanup_state()
 
-    def _unregister_handlers(self) -> None:
-        if self.handle:
-            bpy.types.SpaceView3D.draw_handler_remove(self.handle, "WINDOW")
-        if self.depsgraph_update in bpy.app.handlers.depsgraph_update_post:
-            bpy.app.handlers.depsgraph_update_post.remove(self.depsgraph_update)
-
     def _cleanup_state(self) -> None:
+        if self.handle is not None:
+            bpy.types.SpaceView3D.draw_handler_remove(self.handle, "WINDOW")
         self.handle = None
         self.is_running = False
         self.active_object = None
