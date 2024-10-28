@@ -12,7 +12,7 @@ import bmesh
 import bpy
 import math
 
-debug_print = False
+debug_print = True
 
 
 @dataclass
@@ -138,8 +138,6 @@ class MeshAnalyzer:
             OrderedDict()
         )  # Keys are object names, values are AnalysisCache objects
         self.MAX_CACHE_SIZE = 10
-        # Add mesh revision tracking
-        self.last_mesh_revision = {}
 
     def clear_data(self):
         # Initialize with tuples of (vertices, normals)
@@ -361,41 +359,27 @@ class MeshAnalyzer:
         if not obj or obj.type != "MESH":
             return
 
-        # Use mesh data's modification time instead
-        current_revision = obj.data.update_tag
-        if obj.name in self.last_mesh_revision:
-            if self.last_mesh_revision[obj.name] == current_revision:
-                # Mesh hasn't changed, try to use cached data
-                if self.get_cached_analysis(obj.name, props):
-                    return
+        # Check if object is in edit mode
+        is_edit_mode = obj.mode == "EDIT"
 
-        # Update revision tracking
-        self.last_mesh_revision[obj.name] = current_revision
-
-        # Clear cache if mesh has changed
-        if (
-            obj.name not in self.last_mesh_revision
-            or self.last_mesh_revision[obj.name] != current_revision
-        ):
-            if obj.name in self.cache:
-                del self.cache[obj.name]
+        # Always perform analysis in edit mode, otherwise check cache
+        if not is_edit_mode and self.get_cached_analysis(obj.name, props):
+            return
 
         # Clear existing data before analysis
         self.clear_data()
 
-        # Try to use cached data only if mesh hasn't changed
-        if obj.name in self.cache:
-            if self.get_cached_analysis(obj.name, props):
-                return
-
         if debug_print:
-            print("Performing analysis")
+            print("Performing analysis", "(Edit Mode)" if is_edit_mode else "")
 
-        # If cache miss, perform full analysis
-        matrix_world = obj.matrix_world
+        # Get BMesh differently depending on mode
         bm = bmesh.new()
-        bm.from_mesh(obj.data)
+        if is_edit_mode:
+            bm = bmesh.from_edit_mesh(obj.data)
+        else:
+            bm.from_mesh(obj.data)
 
+        matrix_world = obj.matrix_world
         analyze_verts, analyze_edges, analyze_faces = self._should_analyze(props)
 
         if analyze_verts:
