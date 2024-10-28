@@ -12,7 +12,7 @@ import bmesh
 import bpy
 import math
 
-debug_print = True
+debug_print = False
 
 
 @dataclass
