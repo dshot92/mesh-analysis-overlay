@@ -10,16 +10,54 @@ from typing import List, Tuple
 import bmesh
 import bpy
 import math
+from bpy.types import Object
 
 
 class MeshAnalyzer:
-    def __init__(self):
+    def __init__(self, obj: Object):
+        if not obj or obj.type != "MESH":
+            raise ValueError("Invalid mesh object")
+
         self.clear_data()
-        # LRU cache with max size 10
-        self.cache = (
-            OrderedDict()
-        )  # Keys are object names, values are AnalysisCache objects
-        self.MAX_CACHE_SIZE = 10
+        self.active_object = obj
+        self.analyzed_features = set()
+        self.update(obj)  # Perform initial analysis
+
+    def update(self, obj):
+        """Update analysis if needed"""
+        if obj != self.active_object:
+            return  # Only analyze the object we were initialized with
+
+        # Get currently enabled features from properties
+        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+        enabled_features = self._get_enabled_features(props)
+
+        # Analyze any enabled features that haven't been analyzed yet
+        for feature in enabled_features:
+            if feature not in self.analyzed_features:
+                self.analyze_specific_feature(obj, feature)
+                self.analyzed_features.add(feature)
+
+    def _get_enabled_features(self, props):
+        """Get list of currently enabled features from properties"""
+        enabled = []
+
+        # Check vertex features
+        for key in self.vertex_data.keys():
+            if getattr(props, f"show_{key}_vertices", False):
+                enabled.append(key)
+
+        # Check edge features
+        for key in self.edge_data.keys():
+            if getattr(props, f"show_{key}_edges", False):
+                enabled.append(key)
+
+        # Check face features
+        for key in self.face_data.keys():
+            if getattr(props, f"show_{key}_faces", False):
+                enabled.append(key)
+
+        return enabled
 
     def clear_data(self):
         # Initialize with tuples of (vertices, normals)
@@ -62,146 +100,90 @@ class MeshAnalyzer:
                 return False
         return True
 
-    def analyze_mesh(self, obj):
-        """Main analysis method organized by toggle type"""
-        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
-
+    def analyze_specific_feature(self, obj, feature_type: str):
+        """Analyze a single feature type"""
         if not obj or obj.type != "MESH":
             return
 
-        self.clear_data()
         bm = bmesh.new()
         bm.from_mesh(obj.data)
         matrix_world = obj.matrix_world
 
-        # Single vertices
-        if props.show_single_vertices:
-            for vert in bm.verts:
-                if len(vert.link_edges) == 0:
-                    pos = matrix_world @ vert.co
-                    normal = matrix_world.to_3x3() @ vert.normal
-                    self.vertex_data["single"][0].append(pos)
-                    self.vertex_data["single"][1].append(normal)
+        if feature_type in self.vertex_data:
+            self._analyze_vertex_feature(bm, matrix_world, feature_type)
+        elif feature_type in self.edge_data:
+            self._analyze_edge_feature(bm, matrix_world, feature_type)
+        elif feature_type in self.face_data:
+            self._analyze_face_feature(bm, matrix_world, feature_type)
 
-        # N-pole vertices
-        if props.show_n_pole_vertices:
-            for vert in bm.verts:
-                if len(vert.link_edges) == 3:
-                    pos = matrix_world @ vert.co
-                    normal = matrix_world.to_3x3() @ vert.normal
-                    self.vertex_data["n_pole"][0].append(pos)
-                    self.vertex_data["n_pole"][1].append(normal)
+        bm.free()
 
-        # E-pole vertices
-        if props.show_e_pole_vertices:
-            for vert in bm.verts:
-                if len(vert.link_edges) == 5:
-                    pos = matrix_world @ vert.co
-                    normal = matrix_world.to_3x3() @ vert.normal
-                    self.vertex_data["e_pole"][0].append(pos)
-                    self.vertex_data["e_pole"][1].append(normal)
+    def _analyze_vertex_feature(self, bm, matrix_world, feature_type):
+        """Analyze a specific vertex feature"""
+        for vert in bm.verts:
+            if self._check_vertex_condition(vert, feature_type):
+                pos = matrix_world @ vert.co
+                normal = matrix_world.to_3x3() @ vert.normal
+                self.vertex_data[feature_type][0].append(pos)
+                self.vertex_data[feature_type][1].append(normal)
 
-        # High-pole vertices
-        if props.show_high_pole_vertices:
-            for vert in bm.verts:
-                if len(vert.link_edges) >= 6:
-                    pos = matrix_world @ vert.co
-                    normal = matrix_world.to_3x3() @ vert.normal
-                    self.vertex_data["high_pole"][0].append(pos)
-                    self.vertex_data["high_pole"][1].append(normal)
+    def _check_vertex_condition(self, vert, feature_type):
+        conditions = {
+            "single": lambda v: len(v.link_edges) == 0,
+            "n_pole": lambda v: len(v.link_edges) == 3,
+            "e_pole": lambda v: len(v.link_edges) == 5,
+            "high_pole": lambda v: len(v.link_edges) >= 6,
+            "non_manifold": lambda v: not v.is_manifold,
+        }
+        return conditions.get(feature_type, lambda _: False)(vert)
 
-        # Non-manifold vertices
-        if props.show_non_manifold_vertices:
-            for vert in bm.verts:
-                if not vert.is_manifold:
-                    pos = matrix_world @ vert.co
-                    normal = matrix_world.to_3x3() @ vert.normal
-                    self.vertex_data["non_manifold"][0].append(pos)
+    def _analyze_edge_feature(self, bm, matrix_world, feature_type):
+        """Analyze a specific edge feature"""
+        for edge in bm.edges:
+            if self._check_edge_condition(edge, feature_type):
+                pos = [matrix_world @ v.co for v in edge.verts]
+                normal = [matrix_world.to_3x3() @ v.normal for v in edge.verts]
+                self.edge_data[feature_type][0].extend(pos)
+                self.edge_data[feature_type][1].extend(normal)
 
-        # Edge Analysis
-        if props.show_non_manifold_edges:
-            for edge in bm.edges:
-                if not edge.is_manifold:
-                    pos = [matrix_world @ v.co for v in edge.verts]
-                    normal = [matrix_world.to_3x3() @ v.normal for v in edge.verts]
-                    self.edge_data["non_manifold"][0].extend(pos)
-                    self.edge_data["non_manifold"][1].extend(normal)
+    def _check_edge_condition(self, edge, feature_type):
+        conditions = {
+            "non_manifold": lambda e: not e.is_manifold,
+            "sharp": lambda e: not e.smooth,
+            "seam": lambda e: e.seam,
+            "boundary": lambda e: e.is_boundary,
+        }
+        return conditions.get(feature_type, lambda _: False)(edge)
 
-        if props.show_sharp_edges:
-            for edge in bm.edges:
-                if edge.smooth is False:
-                    pos = [matrix_world @ v.co for v in edge.verts]
-                    normal = [matrix_world.to_3x3() @ v.normal for v in edge.verts]
-                    self.edge_data["sharp"][0].extend(pos)
-                    self.edge_data["sharp"][1].extend(normal)
+    def _analyze_face_feature(self, bm, matrix_world, feature_type):
+        """Analyze a specific face feature"""
+        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
 
-        if props.show_seam_edges:
-            for edge in bm.edges:
-                if edge.seam:
-                    pos = [matrix_world @ v.co for v in edge.verts]
-                    normal = [matrix_world.to_3x3() @ v.normal for v in edge.verts]
-                    self.edge_data["seam"][0].extend(pos)
-                    self.edge_data["seam"][1].extend(normal)
+        for face in bm.faces:
+            if self._check_face_condition(face, feature_type, props):
+                verts = [matrix_world @ v.co for v in face.verts]
+                normals = [matrix_world.to_3x3() @ v.normal for v in face.verts]
 
-        if props.show_boundary_edges:
-            for edge in bm.edges:
-                if edge.is_boundary:
-                    pos = [matrix_world @ v.co for v in edge.verts]
-                    normal = [matrix_world.to_3x3() @ v.normal for v in edge.verts]
-                    self.edge_data["boundary"][0].extend(pos)
-                    self.edge_data["boundary"][1].extend(normal)
-
-        # Face Analysis - separated loops
-        if props.show_tri_faces:
-            for face in bm.faces:
+                # Handle triangulation for different face types
                 if len(face.verts) == 3:
-                    pos = [matrix_world @ v.co for v in face.verts]
-                    normal = [matrix_world.to_3x3() @ v.normal for v in face.verts]
-                    self.face_data["tri"][0].extend(pos)
-                    self.face_data["tri"][1].extend(normal)
-
-        if props.show_quad_faces:
-            for face in bm.faces:
-                if len(face.verts) == 4:
-                    verts = [matrix_world @ v.co for v in face.verts]
-                    normals = [matrix_world.to_3x3() @ v.normal for v in face.verts]
-                    # Create two triangles from quad
-                    self.face_data["quad"][0].extend([verts[0], verts[1], verts[2]])
-                    self.face_data["quad"][0].extend([verts[0], verts[2], verts[3]])
-                    self.face_data["quad"][1].extend(
-                        [normals[0], normals[1], normals[2]]
-                    )
-                    self.face_data["quad"][1].extend(
-                        [normals[0], normals[2], normals[3]]
-                    )
-
-        if props.show_ngon_faces:
-            for face in bm.faces:
-                if len(face.verts) > 4:
-                    verts = [matrix_world @ v.co for v in face.verts]
-                    normals = [matrix_world.to_3x3() @ v.normal for v in face.verts]
-                    # Fan triangulation from first vertex
+                    self.face_data[feature_type][0].extend(verts)
+                    self.face_data[feature_type][1].extend(normals)
+                else:
+                    # Fan triangulation for quads, ngons, and non-planar faces
                     for i in range(1, len(verts) - 1):
-                        self.face_data["ngon"][0].extend(
+                        self.face_data[feature_type][0].extend(
                             [verts[0], verts[i], verts[i + 1]]
                         )
-                        self.face_data["ngon"][1].extend(
+                        self.face_data[feature_type][1].extend(
                             [normals[0], normals[i], normals[i + 1]]
                         )
 
-        if props.show_non_planar_faces:
-            for face in bm.faces:
-                if len(face.verts) > 3:
-                    if not self.is_face_planar(face, props.non_planar_threshold):
-                        verts = [matrix_world @ v.co for v in face.verts]
-                        normals = [matrix_world.to_3x3() @ v.normal for v in face.verts]
-                        # Fan triangulation from first vertex
-                        for i in range(1, len(verts) - 1):
-                            self.face_data["non_planar"][0].extend(
-                                [verts[0], verts[i], verts[i + 1]]
-                            )
-                            self.face_data["non_planar"][1].extend(
-                                [normals[0], normals[i], normals[i + 1]]
-                            )
-
-        bm.free()
+    def _check_face_condition(self, face, feature_type, props):
+        conditions = {
+            "tri": lambda f, _: len(f.verts) == 3,
+            "quad": lambda f, _: len(f.verts) == 4,
+            "ngon": lambda f, _: len(f.verts) > 4,
+            "non_planar": lambda f, p: len(f.verts) > 3
+            and not self.is_face_planar(f, p.non_planar_threshold),
+        }
+        return conditions.get(feature_type, lambda f, _: False)(face, props)
