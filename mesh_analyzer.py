@@ -12,87 +12,105 @@ import bmesh
 import bpy
 import math
 
-debug_print = False
+debug_print = True
 
 
 @dataclass
 class AnalysisCache:
     # Face data
-    tri_faces: List[Vector] = field(default_factory=list)
-    quad_faces: List[Vector] = field(default_factory=list)
-    ngon_faces: List[Vector] = field(default_factory=list)
-    non_planar_faces: List[Vector] = field(default_factory=list)
+    tri_faces: List[Vector] = field(default=None)
+    quad_faces: List[Vector] = field(default=None)
+    ngon_faces: List[Vector] = field(default=None)
+    non_planar_faces: List[Vector] = field(default=None)
 
     # Vertex data
-    single_vertices: List[Vector] = field(default_factory=list)
-    n_pole_vertices: List[Vector] = field(default_factory=list)
-    e_pole_vertices: List[Vector] = field(default_factory=list)
-    high_pole_vertices: List[Vector] = field(default_factory=list)
-    non_manifold_vertices: List[Vector] = field(default_factory=list)
+    single_vertices: List[Vector] = field(default=None)
+    n_pole_vertices: List[Vector] = field(default=None)
+    e_pole_vertices: List[Vector] = field(default=None)
+    high_pole_vertices: List[Vector] = field(default=None)
+    non_manifold_vertices: List[Vector] = field(default=None)
 
     # Edge data
-    non_manifold_edges: List[Vector] = field(default_factory=list)
-    sharp_edges: List[Vector] = field(default_factory=list)
-    seam_edges: List[Vector] = field(default_factory=list)
-    boundary_edges: List[Vector] = field(default_factory=list)
+    non_manifold_edges: List[Vector] = field(default=None)
+    sharp_edges: List[Vector] = field(default=None)
+    seam_edges: List[Vector] = field(default=None)
+    boundary_edges: List[Vector] = field(default=None)
 
     def update_from_analyzer(self, analyzer, props):
         """Update only the enabled analysis types"""
         # Face data
         for key in analyzer.face_data:
             if getattr(props, f"show_{key}_faces"):
-                data = analyzer.face_data[key].copy()
-                setattr(self, f"{key}_faces", data)
-                if debug_print:
+                data = analyzer.face_data[key]
+                setattr(self, f"{key}_faces", data.copy() if data is not None else [])
+                if debug_print and data:
                     print(f"Caching {key}_faces: {len(data)} vertices")
             else:
-                setattr(self, f"{key}_faces", [])
+                setattr(self, f"{key}_faces", None)
 
         # Vertex data
         for key in analyzer.vertex_data:
             if getattr(props, f"show_{key}_vertices"):
-                data = analyzer.vertex_data[key].copy()
-                setattr(self, f"{key}_vertices", data)
-                if debug_print:
+                data = analyzer.vertex_data[key]
+                setattr(
+                    self, f"{key}_vertices", data.copy() if data is not None else []
+                )
+                if debug_print and data:
                     print(f"Caching {key}_vertices: {len(data)} vertices")
             else:
-                setattr(self, f"{key}_vertices", [])
+                setattr(self, f"{key}_vertices", None)
 
         # Edge data
         for key in analyzer.edge_data:
             if getattr(props, f"show_{key}_edges"):
-                data = analyzer.edge_data[key].copy()
-                setattr(self, f"{key}_edges", data)
-                if debug_print:
+                data = analyzer.edge_data[key]
+                setattr(self, f"{key}_edges", data.copy() if data is not None else [])
+                if debug_print and data:
                     print(f"Caching {key}_edges: {len(data)} vertices")
             else:
-                setattr(self, f"{key}_edges", [])
+                setattr(self, f"{key}_edges", None)
 
     def restore_to_analyzer(self, analyzer, props):
-        """Restore only the enabled analysis types"""
+        """Restore ONLY the empty data types that are newly enabled"""
         # Face data
         for key in analyzer.face_data:
             if getattr(props, f"show_{key}_faces"):
                 data = getattr(self, f"{key}_faces")
-                analyzer.face_data[key] = data.copy()
-                if debug_print:
-                    print(f"Restoring {key}_faces: {len(data)} vertices")
+                # Only restore if: has cached data AND current data is empty AND analyzer data is empty
+                if (
+                    data is not None
+                    and not analyzer.face_data[key]
+                    and len(analyzer.face_data[key]) == 0
+                ):  # Extra check to ensure it's truly empty
+                    analyzer.face_data[key] = data.copy()
+                    if debug_print:
+                        print(f"Restoring {key}_faces: {len(data)} vertices")
 
         # Vertex data
         for key in analyzer.vertex_data:
             if getattr(props, f"show_{key}_vertices"):
                 data = getattr(self, f"{key}_vertices")
-                analyzer.vertex_data[key] = data.copy()
-                if debug_print:
-                    print(f"Restoring {key}_vertices: {len(data)} vertices")
+                if (
+                    data is not None
+                    and not analyzer.vertex_data[key]
+                    and len(analyzer.vertex_data[key]) == 0
+                ):  # Extra check to ensure it's truly empty
+                    analyzer.vertex_data[key] = data.copy()
+                    if debug_print:
+                        print(f"Restoring {key}_vertices: {len(data)} vertices")
 
         # Edge data
         for key in analyzer.edge_data:
             if getattr(props, f"show_{key}_edges"):
                 data = getattr(self, f"{key}_edges")
-                analyzer.edge_data[key] = data.copy()
-                if debug_print:
-                    print(f"Restoring {key}_edges: {len(data)} vertices")
+                if (
+                    data is not None
+                    and not analyzer.edge_data[key]
+                    and len(analyzer.edge_data[key]) == 0
+                ):  # Extra check to ensure it's truly empty
+                    analyzer.edge_data[key] = data.copy()
+                    if debug_print:
+                        print(f"Restoring {key}_edges: {len(data)} vertices")
 
 
 class MeshAnalyzer:
@@ -131,17 +149,16 @@ class MeshAnalyzer:
 
         if obj_name in self.cache:
             if debug_print:
-                print(f"Updating cache for {obj_name}")
-            del self.cache[obj_name]
-        elif len(self.cache) >= self.MAX_CACHE_SIZE:
-            removed_key = next(iter(self.cache))
+                print(f"Updating existing cache for {obj_name}")
+            self.cache[obj_name] = cache_entry
+        else:
+            if len(self.cache) >= self.MAX_CACHE_SIZE:
+                removed_key, _ = self.cache.popitem(last=False)
+                if debug_print:
+                    print(f"Cache full, removing oldest entry: {removed_key}")
+            self.cache[obj_name] = cache_entry
             if debug_print:
-                print(f"Cache full, removing oldest entry: {removed_key}")
-            self.cache.popitem(last=False)
-
-        self.cache[obj_name] = cache_entry
-        if debug_print:
-            print(f"Added new cache entry for {obj_name}")
+                print(f"Added new cache entry for {obj_name}")
 
     def get_cached_analysis(self, obj_name: str, props) -> bool:
         if obj_name not in self.cache:
@@ -151,42 +168,44 @@ class MeshAnalyzer:
 
         cache_entry = self.cache[obj_name]
 
-        # Only check if the attribute exists, empty lists are valid
-        for key in self.face_data:
-            if getattr(props, f"show_{key}_faces"):
-                if not hasattr(cache_entry, f"{key}_faces"):
+        # Check if all enabled analysis types are present in the cache
+        analyze_verts, analyze_edges, analyze_faces = self._should_analyze(props)
+
+        if analyze_faces:
+            for key in self.face_data:
+                if (
+                    getattr(props, f"show_{key}_faces")
+                    and getattr(cache_entry, f"{key}_faces") is None
+                ):
                     if debug_print:
-                        print(
-                            f"Cache miss: missing {key} faces attribute for {obj_name}"
-                        )
+                        print(f"Cache miss: missing {key}_faces")
                     return False
 
-        for key in self.vertex_data:
-            if getattr(props, f"show_{key}_vertices"):
-                if not hasattr(cache_entry, f"{key}_vertices"):
+        if analyze_verts:
+            for key in self.vertex_data:
+                if (
+                    getattr(props, f"show_{key}_vertices")
+                    and getattr(cache_entry, f"{key}_vertices") is None
+                ):
                     if debug_print:
-                        print(
-                            f"Cache miss: missing {key} vertex attribute for {obj_name}"
-                        )
+                        print(f"Cache miss: missing {key}_vertices")
                     return False
 
-        for key in self.edge_data:
-            if getattr(props, f"show_{key}_edges"):
-                if not hasattr(cache_entry, f"{key}_edges"):
+        if analyze_edges:
+            for key in self.edge_data:
+                if (
+                    getattr(props, f"show_{key}_edges")
+                    and getattr(cache_entry, f"{key}_edges") is None
+                ):
                     if debug_print:
-                        print(
-                            f"Cache miss: missing {key} edge attribute for {obj_name}"
-                        )
+                        print(f"Cache miss: missing {key}_edges")
                     return False
 
-        # If we get here, all requested overlays are present
+        # Restore cached data
         cache_entry.restore_to_analyzer(self, props)
-        if debug_print:
-            print(f"Cache hit for {obj_name}")
 
         # Update LRU order
-        del self.cache[obj_name]
-        self.cache[obj_name] = cache_entry
+        self.cache.move_to_end(obj_name)
 
         return True
 
@@ -328,7 +347,7 @@ class MeshAnalyzer:
             return
 
         if debug_print:
-            print("Performing full analysis")
+            print("Performing analysis")
 
         # If cache miss, perform full analysis
         matrix_world = obj.matrix_world
