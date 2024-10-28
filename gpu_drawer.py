@@ -6,6 +6,7 @@
 
 import bpy
 import gpu
+import mathutils
 
 from typing import Dict, List, Optional, Tuple, Any
 from bpy.types import Object, Scene
@@ -30,6 +31,8 @@ class GPUDrawer:
         self.is_running: bool = False
         self.mesh_analyzer: MeshAnalyzer = MeshAnalyzer()
         self.active_object: Optional[Object] = None
+        # Track last known offset value
+        self.last_offset: float = 0.0
 
     def _initialize_gpu(self) -> None:
         self.shader = gpu.shader.from_builtin("FLAT_COLOR")
@@ -61,6 +64,16 @@ class GPUDrawer:
         return configs
 
     def update_visibility(self) -> None:
+        # Check if offset has changed
+        current_offset = self.scene_props.overlay_offset
+        if current_offset != self.last_offset:
+            self.last_offset = current_offset
+            # Recreate batches with new offset
+            if self._is_valid_mesh_object(bpy.context.active_object):
+                self._create_all_batches(bpy.context.scene)
+                self._force_viewport_redraw()
+                return
+
         # Update toggle states from scene properties
         for key, (flag_name, _) in self._get_primitive_configs().items():
             new_state = getattr(self.scene_props, flag_name, False)
@@ -84,19 +97,23 @@ class GPUDrawer:
         self.update_visibility()
         obj = bpy.context.active_object
 
-        # Clear batches if active object changed
-        if obj != self.active_object and self._is_valid_mesh_object(obj):
-            self.batches.clear()  # Force recreation of batches for new object
+        # Check for edit mode changes
+        if obj and obj.mode == "EDIT":
+            self.batches.clear()
+            self._analyze_mesh(obj)
+        elif obj != self.active_object and self._is_valid_mesh_object(obj):
+            self.batches.clear()
             self._analyze_mesh(obj)
 
         if self._is_valid_mesh_object(obj):
             self._setup_gpu_state()
-            # Draw all currently visible elements
-            for key, (flag, primitive) in self._get_primitive_configs().items():
-                if getattr(self, flag, False):  # If element is visible
-                    self._draw_element(key, primitive)
-                # Update toggle state for tracking changes
-                self.toggle_states[flag] = getattr(self, flag, False)
+            for key, (flag, _) in self._get_primitive_configs().items():
+                if (
+                    getattr(self, flag, False)
+                    and key in self.batches
+                    and self.batches[key]
+                ):
+                    self._draw_element(key, self._get_primitive_type(key))
 
     def _is_valid_mesh_object(self, obj: Optional[Object]) -> bool:
         return obj is not None and obj.type == "MESH"
@@ -136,59 +153,73 @@ class GPUDrawer:
     def _create_all_batches(self, scene: Scene) -> None:
         self.batches = {}
 
-        # Face data
-        for key in self.mesh_analyzer.face_data:
-            vertices = self.mesh_analyzer.face_data[key]
-            if vertices:
-                # Add _faces suffix for face colors
+        # Process each data type
+        for key, (flag_name, _) in self._get_primitive_configs().items():
+            if not getattr(self, flag_name, False):
+                continue
+
+            # Get the appropriate data and color based on the type
+            if key in self.mesh_analyzer.face_data:
+                data = self.mesh_analyzer.face_data[key]
                 color = getattr(self.scene_props, f"{key}_faces_color")
-                self.batches[key] = self._create_batch(key, vertices, color)
-
-        # Edge data
-        for key in self.mesh_analyzer.edge_data:
-            vertices = self.mesh_analyzer.edge_data[key]
-            if vertices:
+            elif key in self.mesh_analyzer.edge_data:
+                data = self.mesh_analyzer.edge_data[key]
                 color = getattr(self.scene_props, f"{key}_edges_color")
-                self.batches[key] = self._create_batch(key, vertices, color)
-
-        # Vertex data
-        for key in self.mesh_analyzer.vertex_data:
-            vertices = self.mesh_analyzer.vertex_data[key]
-            if vertices:
-                # Add _vertices suffix for vertex colors
+            else:  # vertex data
+                data = self.mesh_analyzer.vertex_data[key]
                 color = getattr(self.scene_props, f"{key}_vertices_color")
-                self.batches[key] = self._create_batch(key, vertices, color)
+
+            if data and data[0]:  # Check if we have vertices
+                self.batches[key] = self._create_batch(key, data, color)
 
     def _create_batch(
-        self, key: str, vertices: List[Any], color: Tuple[float, float, float, float]
+        self,
+        key: str,
+        data: Tuple[List[mathutils.Vector], List[mathutils.Vector]],
+        color: Tuple[float, float, float, float],
     ) -> Any:
-        if not vertices:
+        vertices, normals = data
+        if not vertices or len(vertices) == 0:
             return None
 
-        # Get primitive type based on which data dictionary contains the key
-        primitive_type = "TRIS"  # default
-        if key in self.mesh_analyzer.edge_data:
-            primitive_type = "LINES"
-        elif key in self.mesh_analyzer.vertex_data:
-            primitive_type = "POINTS"
+        # Get primitive type
+        primitive_type = self._get_primitive_type(key)
 
-        colors = [color] * len(vertices)
+        # Apply offset using the stored normals
+        offset_vertices = []
+        for v, n in zip(vertices, normals):
+            offset_vertices.append(v + (n * self.scene_props.overlay_offset))
+
+        colors = [color] * len(offset_vertices)
 
         return batch_for_shader(
-            self.shader, primitive_type, {"pos": vertices, "color": colors}
+            self.shader, primitive_type, {"pos": offset_vertices, "color": colors}
         )
+
+    def _get_primitive_type(self, key: str) -> str:
+        if key in self.mesh_analyzer.edge_data:
+            return "LINES"
+        elif key in self.mesh_analyzer.vertex_data:
+            return "POINTS"
+        return "TRIS"
+
+    def _handle_mesh_update(self, scene, depsgraph) -> None:
+        obj = bpy.context.active_object
+        if obj and obj.mode == "EDIT":
+            self.batches.clear()
+            self._analyze_mesh(obj)
 
     def start(self) -> None:
         if self.is_running:
             return
 
-        # Register the draw handler
+        # Register the draw handler and mesh update handler
         self.handle = bpy.types.SpaceView3D.draw_handler_add(
             self.draw, (), "WINDOW", "POST_VIEW"
         )
+        bpy.app.handlers.depsgraph_update_post.append(self._handle_mesh_update)
         self._initial_analysis()
         self.is_running = True
-        # Force initial redraw
         self._force_viewport_redraw()
 
     def _initial_analysis(self) -> None:
@@ -199,11 +230,9 @@ class GPUDrawer:
     def stop(self) -> None:
         if not self.is_running:
             return
-        self._cleanup_state()
-
-    def _cleanup_state(self) -> None:
         if self.handle is not None:
             bpy.types.SpaceView3D.draw_handler_remove(self.handle, "WINDOW")
+            bpy.app.handlers.depsgraph_update_post.remove(self._handle_mesh_update)
         self.handle = None
         self.is_running = False
         self.active_object = None
