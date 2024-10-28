@@ -18,10 +18,10 @@ class MeshAnalyzer:
 
     def clear_data(self):
         self.face_data = {
-            "tris": {"verts": [], "normals": []},
-            "quads": {"verts": [], "normals": []},
-            "ngons": {"verts": [], "normals": []},
-            "non_planar": {"verts": [], "normals": []},
+            "tris": [],
+            "quads": [],
+            "ngons": [],
+            "non_planar": [],
         }
         self.vertex_data = {
             "singles": [],
@@ -93,20 +93,14 @@ class MeshAnalyzer:
         """Process a triangular face"""
         verts, normals = self._get_face_data(face, matrix_world, offset)
         offset_verts = [verts[i] + normals[i] * offset for i in range(3)]
-        self.face_data["tris"]["verts"].extend(offset_verts)
-        self.face_data["tris"]["normals"].extend(
-            [matrix_world.to_3x3() @ face.normal] * 3
-        )
+        self.face_data["tris"].extend(offset_verts)
 
     def _process_quad(self, face, matrix_world, offset):
         """Process a quad face by splitting into two triangles"""
         verts, normals = self._get_face_data(face, matrix_world, offset)
         for indices in [(0, 1, 2), (0, 2, 3)]:
             tri_verts = [verts[i] + normals[i] * offset for i in indices]
-            self.face_data["quads"]["verts"].extend(tri_verts)
-            self.face_data["quads"]["normals"].extend(
-                [matrix_world.to_3x3() @ face.normal] * 3
-            )
+            self.face_data["quads"].extend(tri_verts)
 
     def _process_ngon(self, face, matrix_world, offset):
         """Process an n-gon face using fan triangulation"""
@@ -114,10 +108,7 @@ class MeshAnalyzer:
         for i in range(1, len(face.verts) - 1):
             tri_indices = [0, i, i + 1]
             tri_verts = [verts[idx] + normals[idx] * offset for idx in tri_indices]
-            self.face_data["ngons"]["verts"].extend(tri_verts)
-            self.face_data["ngons"]["normals"].extend(
-                [matrix_world.to_3x3() @ face.normal] * 3
-            )
+            self.face_data["ngons"].extend(tri_verts)
 
     def _process_non_planar(self, face, matrix_world, offset, threshold):
         """Process a non-planar face"""
@@ -126,10 +117,7 @@ class MeshAnalyzer:
             for i in range(1, len(face.verts) - 1):
                 tri_indices = [0, i, i + 1]
                 tri_verts = [verts[idx] + normals[idx] * offset for idx in tri_indices]
-                self.face_data["non_planar"]["verts"].extend(tri_verts)
-                self.face_data["non_planar"]["normals"].extend(
-                    [matrix_world.to_3x3() @ face.normal] * 3
-                )
+                self.face_data["non_planar"].extend(tri_verts)
 
     def _process_vertex(self, vert, matrix_world, props):
         """Process a single vertex for poles and manifold status"""

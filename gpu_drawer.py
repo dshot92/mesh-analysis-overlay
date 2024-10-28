@@ -109,15 +109,15 @@ class GPUDrawer:
     def _create_all_batches(self, scene: Scene) -> None:
         analyzer_data: Dict[str, Tuple[List[Any], Any]] = {
             "tris": (
-                self.mesh_analyzer.face_data["tris"]["verts"],
+                self.mesh_analyzer.face_data["tris"],
                 self.scene_props.tris_color,
             ),
             "quads": (
-                self.mesh_analyzer.face_data["quads"]["verts"],
+                self.mesh_analyzer.face_data["quads"],
                 self.scene_props.quads_color,
             ),
             "ngons": (
-                self.mesh_analyzer.face_data["ngons"]["verts"],
+                self.mesh_analyzer.face_data["ngons"],
                 self.scene_props.ngons_color,
             ),
             "singles": (
@@ -153,7 +153,7 @@ class GPUDrawer:
                 self.scene_props.seam_edges_color,
             ),
             "non_planar": (
-                self.mesh_analyzer.face_data["non_planar"]["verts"],
+                self.mesh_analyzer.face_data["non_planar"],
                 self.scene_props.non_planar_color,
             ),
             "boundary_edges": (
