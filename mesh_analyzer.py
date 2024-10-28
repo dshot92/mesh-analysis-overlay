@@ -93,39 +93,29 @@ class MeshAnalyzer:
             for v in face.verts
         ]
 
-    def _process_triangle(self, face, matrix_world, offset):
-        """Process a triangular face"""
+    def _process_face(self, face, matrix_world, offset, face_type):
+        """Process any face type by triangulating it"""
         offset_verts = self._get_face_data_with_offset(face, matrix_world, offset)
-        self.face_data["tris"].extend(offset_verts[:3])
 
-    def _process_quad(self, face, matrix_world, offset):
-        """Process a quad face by splitting into two triangles"""
-        offset_verts = self._get_face_data_with_offset(face, matrix_world, offset)
-        for indices in [(0, 1, 2), (0, 2, 3)]:
-            self.face_data["quads"].extend([offset_verts[i] for i in indices])
+        # For triangles, just add the 3 vertices
+        if len(face.verts) == 3:
+            self.face_data[face_type].extend(offset_verts[:3])
+            return
 
-    def _process_ngon(self, face, matrix_world, offset):
-        """Process an n-gon face using fan triangulation"""
-        offset_verts = self._get_face_data_with_offset(face, matrix_world, offset)
+        # For quads and n-gons, triangulate using fan method
         for i in range(1, len(face.verts) - 1):
-            tri_indices = [0, i, i + 1]
-            self.face_data["ngons"].extend([offset_verts[idx] for idx in tri_indices])
+            tri_verts = [offset_verts[idx] for idx in (0, i, i + 1)]
+            self.face_data[face_type].extend(tri_verts)
 
-    def _process_non_planar(self, face, matrix_world, offset, threshold):
-        """Process a non-planar face"""
-        if not self.is_face_planar(face, threshold):
-            offset_verts = self._get_face_data_with_offset(face, matrix_world, offset)
-            for i in range(1, len(face.verts) - 1):
-                tri_indices = [0, i, i + 1]
-                self.face_data["non_planar"].extend(
-                    [offset_verts[idx] for idx in tri_indices]
-                )
+    def _get_vertex_data_with_offset(self, vert, matrix_world, offset) -> Vector:
+        """Get transformed and offset vertex position"""
+        world_pos = matrix_world @ vert.co
+        return world_pos + ((matrix_world.to_3x3() @ vert.normal) * offset)
 
     def _process_vertex(self, vert, matrix_world, props):
         """Process a single vertex for poles and manifold status"""
-        world_pos = matrix_world @ vert.co
-        offset_pos = world_pos + (
-            (matrix_world.to_3x3() @ vert.normal) * props.overlay_offset
+        offset_pos = self._get_vertex_data_with_offset(
+            vert, matrix_world, props.overlay_offset
         )
         edge_count = len(vert.link_edges)
 
@@ -142,13 +132,12 @@ class MeshAnalyzer:
 
     def _process_edge(self, edge, matrix_world, props):
         """Process a single edge for manifold status, sharpness, seams and boundaries"""
-        # Calculate average normal for edge vertices
-        avg_normal = (edge.verts[0].normal + edge.verts[1].normal).normalized()
-
-        v1 = matrix_world @ edge.verts[0].co
-        v2 = matrix_world @ edge.verts[1].co
-        offset_v1 = v1 + ((matrix_world.to_3x3() @ avg_normal) * props.overlay_offset)
-        offset_v2 = v2 + ((matrix_world.to_3x3() @ avg_normal) * props.overlay_offset)
+        offset_v1 = self._get_vertex_data_with_offset(
+            edge.verts[0], matrix_world, props.overlay_offset
+        )
+        offset_v2 = self._get_vertex_data_with_offset(
+            edge.verts[1], matrix_world, props.overlay_offset
+        )
 
         if not edge.is_manifold and props.show_non_manifold_edges:
             self.edge_data["non_manifold"].extend([offset_v1, offset_v2])
@@ -195,15 +184,14 @@ class MeshAnalyzer:
                 vert_count = len(face.verts)
 
                 if vert_count == 3 and props.show_tris_faces:
-                    self._process_triangle(face, matrix_world, offset)
+                    self._process_face(face, matrix_world, offset, "tris")
                 elif vert_count == 4 and props.show_quads_faces:
-                    self._process_quad(face, matrix_world, offset)
+                    self._process_face(face, matrix_world, offset, "quads")
                 elif vert_count > 4 and props.show_ngons_faces:
-                    self._process_ngon(face, matrix_world, offset)
+                    self._process_face(face, matrix_world, offset, "ngons")
 
                 if vert_count > 3 and props.show_non_planar_faces:
-                    self._process_non_planar(
-                        face, matrix_world, offset, props.non_planar_threshold
-                    )
+                    if not self.is_face_planar(face, props.non_planar_threshold):
+                        self._process_face(face, matrix_world, offset, "non_planar")
 
         bm.free()
