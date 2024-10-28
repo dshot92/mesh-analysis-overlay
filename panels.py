@@ -115,7 +115,7 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         header.label(text="Overlay Settings")
 
         if panel:
-            panel.prop(props, "overlay_face_offset", text="Overlay Face Offset")
+            panel.prop(props, "overlay_offset", text="Overlay Offset")
             panel.prop(props, "overlay_edge_width", text="Overlay Edge Width")
             panel.prop(props, "overlay_vertex_radius", text="Overlay Vertex Radius")
             panel.prop(props, "non_planar_threshold", text="Non-Planar Threshold")

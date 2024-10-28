@@ -80,7 +80,7 @@ class GPUDrawer:
 
     def _analyze_mesh(self, obj: Object) -> None:
         self.active_object = obj
-        self.mesh_analyzer.analyze_mesh(obj, self.scene_props.overlay_face_offset)
+        self.mesh_analyzer.analyze_mesh(obj)
         self._create_all_batches(bpy.context.scene)
 
     def _setup_gpu_state(self) -> None:
@@ -162,7 +162,7 @@ class GPUDrawer:
     def _update_mesh_if_needed(self, obj: Object, scene: Scene) -> None:
         if obj.mode == "EDIT":
             obj.update_from_editmode()
-        self.mesh_analyzer.analyze_mesh(obj, self.scene_props.overlay_face_offset)
+        self.mesh_analyzer.analyze_mesh(obj)
 
     def _redraw_viewport(self) -> None:
         for window in bpy.context.window_manager.windows:

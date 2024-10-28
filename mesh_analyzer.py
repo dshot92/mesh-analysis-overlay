@@ -86,77 +86,84 @@ class MeshAnalyzer:
                 return False
         return True
 
-    def _get_face_data(
-        self, face, matrix_world, offset
-    ) -> Tuple[List[Vector], List[Vector]]:
-        """Get transformed vertex positions and normals for a face"""
-        vert_normals = [matrix_world.to_3x3() @ v.normal for v in face.verts]
-        vert_coords = [matrix_world @ v.co for v in face.verts]
-        return vert_coords, vert_normals
+    def _get_face_data_with_offset(self, face, matrix_world, offset) -> List[Vector]:
+        """Get transformed and offset vertex positions for a face"""
+        return [
+            (matrix_world @ v.co) + ((matrix_world.to_3x3() @ v.normal) * offset)
+            for v in face.verts
+        ]
 
     def _process_triangle(self, face, matrix_world, offset):
         """Process a triangular face"""
-        verts, normals = self._get_face_data(face, matrix_world, offset)
-        offset_verts = [verts[i] + normals[i] * offset for i in range(3)]
-        self.face_data["tris"].extend(offset_verts)
+        offset_verts = self._get_face_data_with_offset(face, matrix_world, offset)
+        self.face_data["tris"].extend(offset_verts[:3])
 
     def _process_quad(self, face, matrix_world, offset):
         """Process a quad face by splitting into two triangles"""
-        verts, normals = self._get_face_data(face, matrix_world, offset)
+        offset_verts = self._get_face_data_with_offset(face, matrix_world, offset)
         for indices in [(0, 1, 2), (0, 2, 3)]:
-            tri_verts = [verts[i] + normals[i] * offset for i in indices]
-            self.face_data["quads"].extend(tri_verts)
+            self.face_data["quads"].extend([offset_verts[i] for i in indices])
 
     def _process_ngon(self, face, matrix_world, offset):
         """Process an n-gon face using fan triangulation"""
-        verts, normals = self._get_face_data(face, matrix_world, offset)
+        offset_verts = self._get_face_data_with_offset(face, matrix_world, offset)
         for i in range(1, len(face.verts) - 1):
             tri_indices = [0, i, i + 1]
-            tri_verts = [verts[idx] + normals[idx] * offset for idx in tri_indices]
-            self.face_data["ngons"].extend(tri_verts)
+            self.face_data["ngons"].extend([offset_verts[idx] for idx in tri_indices])
 
     def _process_non_planar(self, face, matrix_world, offset, threshold):
         """Process a non-planar face"""
         if not self.is_face_planar(face, threshold):
-            verts, normals = self._get_face_data(face, matrix_world, offset)
+            offset_verts = self._get_face_data_with_offset(face, matrix_world, offset)
             for i in range(1, len(face.verts) - 1):
                 tri_indices = [0, i, i + 1]
-                tri_verts = [verts[idx] + normals[idx] * offset for idx in tri_indices]
-                self.face_data["non_planar"].extend(tri_verts)
+                self.face_data["non_planar"].extend(
+                    [offset_verts[idx] for idx in tri_indices]
+                )
 
     def _process_vertex(self, vert, matrix_world, props):
         """Process a single vertex for poles and manifold status"""
         world_pos = matrix_world @ vert.co
+        offset_pos = world_pos + (
+            (matrix_world.to_3x3() @ vert.normal) * props.overlay_offset
+        )
         edge_count = len(vert.link_edges)
 
         if edge_count == 0 and props.show_singles_vertices:
-            self.vertex_data["singles"].append(world_pos)
+            self.vertex_data["singles"].append(offset_pos)
         if edge_count == 3 and props.show_n_poles_vertices:
-            self.vertex_data["n_poles"].append(world_pos)
+            self.vertex_data["n_poles"].append(offset_pos)
         if edge_count == 5 and props.show_e_poles_vertices:
-            self.vertex_data["e_poles"].append(world_pos)
+            self.vertex_data["e_poles"].append(offset_pos)
         if edge_count >= 6 and props.show_high_poles_vertices:
-            self.vertex_data["high_poles"].append(world_pos)
+            self.vertex_data["high_poles"].append(offset_pos)
         if not vert.is_manifold and props.show_non_manifold_vertices:
-            self.vertex_data["non_manifold"].append(world_pos)
+            self.vertex_data["non_manifold"].append(offset_pos)
 
     def _process_edge(self, edge, matrix_world, props):
         """Process a single edge for manifold status, sharpness, seams and boundaries"""
+        # Calculate average normal for edge vertices
+        avg_normal = (edge.verts[0].normal + edge.verts[1].normal).normalized()
+
         v1 = matrix_world @ edge.verts[0].co
         v2 = matrix_world @ edge.verts[1].co
+        offset_v1 = v1 + ((matrix_world.to_3x3() @ avg_normal) * props.overlay_offset)
+        offset_v2 = v2 + ((matrix_world.to_3x3() @ avg_normal) * props.overlay_offset)
 
         if not edge.is_manifold and props.show_non_manifold_edges:
-            self.edge_data["non_manifold"].extend([v1, v2])
+            self.edge_data["non_manifold"].extend([offset_v1, offset_v2])
         if not edge.smooth and props.show_sharp_edges:
-            self.edge_data["sharp"].extend([v1, v2])
+            self.edge_data["sharp"].extend([offset_v1, offset_v2])
         if edge.seam and props.show_seam_edges:
-            self.edge_data["seam"].extend([v1, v2])
+            self.edge_data["seam"].extend([offset_v1, offset_v2])
         if len(edge.link_faces) == 1 and props.show_boundary_edges:
-            self.edge_data["boundary"].extend([v1, v2])
+            self.edge_data["boundary"].extend([offset_v1, offset_v2])
 
-    def analyze_mesh(self, obj, offset):
+    def analyze_mesh(self, obj):
         """Main analysis method"""
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+        offset = props.overlay_offset
+
         analyze_verts, analyze_edges, analyze_faces = self._should_analyze(props)
 
         if not any([analyze_verts, analyze_edges, analyze_faces]):
