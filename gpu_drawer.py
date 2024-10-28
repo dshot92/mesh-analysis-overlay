@@ -86,6 +86,7 @@ class GPUDrawer:
     def _setup_gpu_state(self) -> None:
         self.shader.bind()
         gpu.state.blend_set("ALPHA")
+        gpu.state.face_culling_set("BACK")
         gpu.state.depth_test_set("LESS")
 
     def _draw_element(self, batch_key: str, primitive_type: str) -> None:
