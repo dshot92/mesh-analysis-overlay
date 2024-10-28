@@ -18,16 +18,11 @@ class GPUDrawer:
     def __init__(self) -> None:
         self._initialize_state()
         self._initialize_gpu()
-        # Remove _initialize_visibility_flags() since we're using dynamic flags
 
     def _initialize_state(self) -> None:
         self.is_running: bool = False
         self.mesh_analyzer: MeshAnalyzer = MeshAnalyzer()
         self.active_object: Optional[Object] = None
-
-    def _initialize_visibility_flags(self) -> None:
-        for _, (flag_name, _) in self.PRIMITIVE_CONFIGS.items():
-            setattr(self, flag_name, True)
 
     def _initialize_gpu(self) -> None:
         self.shader = gpu.shader.from_builtin("FLAT_COLOR")
@@ -40,6 +35,23 @@ class GPUDrawer:
 
     def _update_single_visibility(self, flag_name: str) -> None:
         setattr(self, flag_name, getattr(self.scene_props, flag_name))
+
+    def _get_primitive_configs(self) -> Dict[str, Tuple[str, str]]:
+        configs = {}
+
+        # Face data (all use TRIS primitive)
+        for key in self.mesh_analyzer.face_data.keys():
+            configs[key] = (f"show_{key}_faces", "TRIS")
+
+        # Edge data (all use LINES primitive)
+        for key in self.mesh_analyzer.edge_data.keys():
+            configs[key] = (f"show_{key}_edges", "LINES")
+
+        # Vertex data (all use POINTS primitive)
+        for key in self.mesh_analyzer.vertex_data.keys():
+            configs[key] = (f"show_{key}_vertices", "POINTS")
+
+        return configs
 
     def update_visibility(self) -> None:
         # Update based on dynamic configs
@@ -75,11 +87,6 @@ class GPUDrawer:
         self.shader.bind()
         gpu.state.blend_set("ALPHA")
         gpu.state.depth_test_set("LESS")
-
-    def _draw_all_elements(self) -> None:
-        for key, (flag, primitive) in self.PRIMITIVE_CONFIGS.items():
-            if getattr(self, flag):
-                self._draw_element(key, primitive)
 
     def _draw_element(self, batch_key: str, primitive_type: str) -> None:
         if not self.batches.get(batch_key):
@@ -201,20 +208,3 @@ class GPUDrawer:
         self.is_running = False
         self.active_object = None
         self.batches = {}
-
-    def _get_primitive_configs(self) -> Dict[str, Tuple[str, str]]:
-        configs = {}
-
-        # Face data (all use TRIS primitive)
-        for key in self.mesh_analyzer.face_data.keys():
-            configs[key] = (f"show_{key}_faces", "TRIS")
-
-        # Edge data (all use LINES primitive)
-        for key in self.mesh_analyzer.edge_data.keys():
-            configs[key] = (f"show_{key}_edges", "LINES")
-
-        # Vertex data (all use POINTS primitive)
-        for key in self.mesh_analyzer.vertex_data.keys():
-            configs[key] = (f"show_{key}_vertices", "POINTS")
-
-        return configs
