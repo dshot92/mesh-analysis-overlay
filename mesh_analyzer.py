@@ -152,19 +152,14 @@ class MeshAnalyzer:
         v1 = matrix_world @ edge.verts[0].co
         v2 = matrix_world @ edge.verts[1].co
 
-        # Debug print for boundary edges
-        if len(edge.link_faces) == 1:
-            print(f"Found boundary edge: {len(edge.link_faces)} linked faces")
-            if props.show_boundary_edges:
-                self.edge_data["boundary"].extend([v1, v2])
-                print("Added boundary edge to display")
-
         if not edge.is_manifold and props.show_non_manifold_edges:
             self.edge_data["non_manifold"].extend([v1, v2])
         if not edge.smooth and props.show_sharp_edges:
             self.edge_data["sharp"].extend([v1, v2])
         if edge.seam and props.show_seam_edges:
             self.edge_data["seam"].extend([v1, v2])
+        if len(edge.link_faces) == 1 and props.show_boundary_edges:
+            self.edge_data["boundary"].extend([v1, v2])
 
     def analyze_mesh(self, obj, offset):
         """Main analysis method"""
