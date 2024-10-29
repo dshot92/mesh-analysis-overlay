@@ -212,13 +212,6 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         min=1.0,
         max=10.0,
     )
-    non_planar_threshold: FloatProperty(
-        name="Non-Planar Threshold",
-        description="Threshold angle for detecting non-planar faces (degrees)",
-        default=0.0001,
-        min=0.0,
-        max=180.0,
-    )
 
 
 classes = (Mesh_Analysis_Overlay_Props,)

@@ -226,10 +226,12 @@ class MeshAnalyzer:
         if data:
             self.cache.add_feature_data(obj_name, feature, data)
 
-    def is_face_planar(self, face, threshold_degrees: float) -> bool:
+    def is_face_planar(self, face) -> bool:
         """Check if a face is planar within the given threshold"""
         if len(face.verts) <= 3:
             return True
+
+        threshold_degrees = 0.0001
 
         v1, v2, v3 = [v.co for v in face.verts[:3]]
         plane_normal = (v2 - v1).cross(v3 - v1).normalized()
@@ -330,9 +332,7 @@ class MeshAnalyzer:
                                 [normals[0], normals[i], normals[i + 1]]
                             )
                 if vert_count > 3:
-                    if "non_planar" in features and not self.is_face_planar(
-                        face, self.scene_props.non_planar_threshold
-                    ):
+                    if "non_planar" in features and not self.is_face_planar(face):
                         for i in range(1, vert_count - 1):
                             self.face_data["non_planar"][0].extend(
                                 [verts[0], verts[i], verts[i + 1]]
