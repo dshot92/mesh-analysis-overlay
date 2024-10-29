@@ -7,7 +7,10 @@ import math
 from bpy.types import Object
 from mathutils import Matrix
 
-debug_print = True
+
+def get_debug_print() -> bool:
+    """Get debug print setting from addon preferences"""
+    return bpy.context.preferences.addons[__package__].preferences.debug_print
 
 
 class MeshAnalyzer:
@@ -92,7 +95,7 @@ class MeshAnalyzer:
     ) -> bool:
         """Determine if a full update of all features is needed"""
         if not cached_state:
-            if debug_print:
+            if get_debug_print():
                 print(f"No cached state found for {obj.name}")
             return True
 
@@ -117,7 +120,7 @@ class MeshAnalyzer:
 
         if needs_update:
             self.is_dirty = True
-            if debug_print:
+            if get_debug_print():
                 print(
                     f"Update needed - Mode changed: {mode_changed}, Edit mode: {obj.data.is_editmode}, Matrix changed: {matrix_changed}"
                 )
@@ -133,12 +136,12 @@ class MeshAnalyzer:
     ) -> Set[str]:
         """Determine which features need to be updated"""
         if needs_full_update:
-            if debug_print:
+            if get_debug_print():
                 print("Full update needed - updating all enabled features")
             return {f for f, enabled in current_toggle_state.items() if enabled}
 
         if not cached_state:
-            if debug_print:
+            if get_debug_print():
                 print("No cache - analyzing all enabled features")
             return {f for f, enabled in current_toggle_state.items() if enabled}
 
@@ -156,14 +159,14 @@ class MeshAnalyzer:
             if is_enabled and (
                 not was_enabled or feature not in self.analyzed_features
             ):
-                if debug_print:
+                if get_debug_print():
                     print(f"Toggle changed for feature: {feature}")
                 features_to_update.add(feature)
         return features_to_update
 
     def _process_features(self, obj: Object, features_to_update: Set[str]) -> None:
         """Process all features that need updating"""
-        if debug_print:
+        if get_debug_print():
             print(f"Features to update: {features_to_update}")
         for feature in features_to_update:
             self.analyze_specific_feature(obj, feature)
@@ -187,13 +190,13 @@ class MeshAnalyzer:
         # Only use cache if object hasn't changed state
         cached_data = self.cache.get_feature_data(obj.name, feature)
         if cached_data and not self.is_dirty:
-            if debug_print:
+            if get_debug_print():
                 print(f"Cache HIT for {obj.name} - {feature}")
             self._store_cached_data(feature, cached_data)
             self.analyzed_features.add(feature)
             return
 
-        if debug_print:
+        if get_debug_print():
             print(f"Cache MISS for {obj.name} - {feature}")
         # Analyze and cache the feature
         bm = bmesh.new()

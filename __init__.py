@@ -1,29 +1,23 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-# ----------------------------------------------------------
-# Author: Daniele Stochino (dshot92)
-# ----------------------------------------------------------
-
-
 import importlib
 
-from . import operators, panels, properties
+from . import operators, panels, properties, preferences
 
 modules = (
+    preferences,
     properties,
     operators,
     panels,
 )
 
 if "bpy" in locals():
-    importlib.reload(properties)
-    importlib.reload(operators)
-    importlib.reload(panels)
+    for module in modules:
+        importlib.reload(module)
 
 
 def register():
     for module in modules:
-        importlib.reload(module)
         module.register()
 
 

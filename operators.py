@@ -1,9 +1,4 @@
-
 # SPDX-License-Identifier: GPL-3.0-or-later
-
-# ----------------------------------------------------------
-# Author: Daniele Stochino (dshot92)
-# ----------------------------------------------------------
 
 import bpy
 
@@ -16,7 +11,9 @@ drawer = GPUDrawer()
 class Mesh_Analysis_Overlay(bpy.types.Operator):
     bl_idname = "view3d.mesh_analysis_overlay"
     bl_label = "Toggle Mesh Analysis Overlay"
-    bl_description = "Toggle the display of the Mesh Analysis Overlay in the 3D viewport"
+    bl_description = (
+        "Toggle the display of the Mesh Analysis Overlay in the 3D viewport"
+    )
 
     def execute(self, context):
         if drawer.is_running:
