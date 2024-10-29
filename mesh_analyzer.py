@@ -88,7 +88,35 @@ class MeshAnalyzer:
             needs_full_update, cached_state, current_toggle_state
         )
 
-        self._process_features(obj, features_to_update)
+        if features_to_update:
+            bm = bmesh.new()
+            bm.from_mesh(obj.data)
+            
+            # Check cache for features
+            uncached_features = set()
+            for f in features_to_update:
+                cached_data = self.cache.get_feature_data(obj.name, f)
+                if cached_data and not self.is_dirty:
+                    if get_debug_print():
+                        print(f"Cache HIT for {obj.name} - {f}")
+                    self._store_cached_data(f, cached_data)
+                    self.analyzed_features.add(f)
+                else:
+                    uncached_features.add(f)
+
+            # Analyze uncached features
+            if uncached_features:
+                if get_debug_print():
+                    print(f"Analyzing features: {uncached_features}")
+                self._analyze_all_features(bm, obj.matrix_world, uncached_features)
+                
+                # Cache results
+                for f in uncached_features:
+                    self._cache_feature_data(obj.name, f)
+                    self.analyzed_features.add(f)
+            
+            bm.free()
+            
         self._update_cache_state(obj, current_toggle_state)
 
     def _check_if_full_update_needed(
@@ -116,9 +144,21 @@ class MeshAnalyzer:
                 print("No cache - analyzing all enabled features")
             return {f for f, enabled in current_toggle_state.items() if enabled}
 
-        return self._get_changed_features(
-            cached_state["toggle_state"], current_toggle_state
-        )
+        # Get only features that have actually changed state
+        changed_features = set()
+        cached_toggles = cached_state["toggle_state"]
+
+        for feature, is_enabled in current_toggle_state.items():
+            was_enabled = cached_toggles.get(feature, False)
+            if is_enabled and (
+                not was_enabled or feature not in self.analyzed_features
+            ):
+                changed_features.add(feature)
+
+        if changed_features and get_debug_print():
+            print(f"Changed features: {changed_features}")
+
+        return changed_features
 
     def _get_changed_features(
         self, cached_toggles: Dict[str, bool], current_toggle_state: Dict[str, bool]
@@ -152,30 +192,6 @@ class MeshAnalyzer:
             obj.mode,
             current_toggle_state,
         )
-
-    def analyze_specific_feature(self, obj: Object, feature: str) -> None:
-        """Analyze a specific feature, using cache when possible"""
-        if not obj or obj.type != "MESH":
-            return
-
-        # Only use cache if object hasn't changed state
-        cached_data = self.cache.get_feature_data(obj.name, feature)
-        if cached_data and not self.is_dirty:
-            if get_debug_print():
-                print(f"Cache HIT for {obj.name} - {feature}")
-            self._store_cached_data(feature, cached_data)
-            self.analyzed_features.add(feature)
-            return
-
-        if get_debug_print():
-            print(f"Cache MISS for {obj.name} - {feature}")
-        # Analyze and cache the feature
-        bm = bmesh.new()
-        bm.from_mesh(obj.data)
-        self._analyze_feature(bm, obj.matrix_world, feature)
-        self._cache_feature_data(obj.name, feature)
-        self.analyzed_features.add(feature)
-        bm.free()
 
     def _store_cached_data(self, feature: str, data: Tuple[List, List]) -> None:
         """Store cached data in appropriate data structure"""
@@ -214,109 +230,106 @@ class MeshAnalyzer:
                 return False
         return True
 
-    def _analyze_feature(
-        self, bm: bmesh.types.BMesh, matrix_world: Matrix, feature: str
+    def _analyze_all_features(
+        self, bm: bmesh.types.BMesh, matrix_world: Matrix, features: Set[str]
     ) -> None:
-        """Route feature analysis to appropriate handler"""
-        if feature in self.vertex_data:
+        """Analyze all needed features in a single pass"""
+        # Determine which types of elements we need to process
+        need_verts = any(f in self.vertex_data for f in features)
+        need_edges = any(f in self.edge_data for f in features)
+        need_faces = any(f in self.face_data for f in features)
+
+        # Process vertices if needed
+        if need_verts:
             bm.verts.ensure_lookup_table()
-            self._analyze_vertex_feature(bm, matrix_world, feature)
-        elif feature in self.edge_data:
+            for v in bm.verts:
+                world_pos = matrix_world @ v.co
+                edge_count = len(v.link_edges)
+                normal = matrix_world.to_3x3() @ v.normal
+
+                if "single" in features and edge_count == 0:
+                    self.vertex_data["single"][0].append(world_pos)
+                    self.vertex_data["single"][1].append(normal)
+                if "n_pole" in features and edge_count == 3:
+                    self.vertex_data["n_pole"][0].append(world_pos)
+                    self.vertex_data["n_pole"][1].append(normal)
+                if "e_pole" in features and edge_count == 5:
+                    self.vertex_data["e_pole"][0].append(world_pos)
+                    self.vertex_data["e_pole"][1].append(normal)
+                if "high_pole" in features and edge_count >= 6:
+                    self.vertex_data["high_pole"][0].append(world_pos)
+                    self.vertex_data["high_pole"][1].append(normal)
+                if "non_manifold_v" in features and not v.is_manifold:
+                    self.vertex_data["non_manifold_v"][0].append(world_pos)
+                    self.vertex_data["non_manifold_v"][1].append(normal)
+
+        # Process edges if needed
+        if need_edges:
             bm.edges.ensure_lookup_table()
-            self._analyze_edge_feature(bm, matrix_world, feature)
-        elif feature in self.face_data:
+            for edge in bm.edges:
+                v1 = matrix_world @ edge.verts[0].co
+                v2 = matrix_world @ edge.verts[1].co
+                n1 = matrix_world.to_3x3() @ edge.verts[0].normal
+                n2 = matrix_world.to_3x3() @ edge.verts[1].normal
+
+                if "sharp" in features and not edge.smooth:
+                    self.edge_data["sharp"][0].extend([v1, v2])
+                    self.edge_data["sharp"][1].extend([n1, n2])
+                if "seam" in features and edge.seam:
+                    self.edge_data["seam"][0].extend([v1, v2])
+                    self.edge_data["seam"][1].extend([n1, n2])
+                if "boundary" in features and edge.is_boundary:
+                    self.edge_data["boundary"][0].extend([v1, v2])
+                    self.edge_data["boundary"][1].extend([n1, n2])
+                if "non_manifold_e" in features and not edge.is_manifold:
+                    self.edge_data["non_manifold_e"][0].extend([v1, v2])
+                    self.edge_data["non_manifold_e"][1].extend([n1, n2])
+
+        # Process faces if needed
+        if need_faces:
             bm.faces.ensure_lookup_table()
-            self._analyze_face_feature(bm, matrix_world, feature)
+            for face in bm.faces:
+                verts = [matrix_world @ v.co for v in face.verts]
+                normals = [matrix_world.to_3x3() @ v.normal for v in face.verts]
+                vert_count = len(face.verts)
 
-    def _analyze_vertex_feature(
-        self, bm: bmesh.types.BMesh, matrix_world: Matrix, feature: str
-    ) -> None:
-        """Analyze vertex-based features"""
-        for v in bm.verts:
-            world_pos = matrix_world @ v.co
-            edge_count = len(v.link_edges)
-            normal = matrix_world.to_3x3() @ v.normal
-
-            if feature == "single" and edge_count == 0:
-                self.vertex_data["single"][0].append(world_pos)
-                self.vertex_data["single"][1].append(normal)
-            elif feature == "n_pole" and edge_count == 3:
-                self.vertex_data["n_pole"][0].append(world_pos)
-                self.vertex_data["n_pole"][1].append(normal)
-            elif feature == "e_pole" and edge_count == 5:
-                self.vertex_data["e_pole"][0].append(world_pos)
-                self.vertex_data["e_pole"][1].append(normal)
-            elif feature == "high_pole" and edge_count >= 6:
-                self.vertex_data["high_pole"][0].append(world_pos)
-                self.vertex_data["high_pole"][1].append(normal)
-            elif feature == "non_manifold_v" and not v.is_manifold:
-                self.vertex_data["non_manifold_v"][0].append(world_pos)
-                self.vertex_data["non_manifold_v"][1].append(normal)
-
-    def _analyze_edge_feature(
-        self, bm: bmesh.types.BMesh, matrix_world: Matrix, feature: str
-    ) -> None:
-        """Analyze edge-based features"""
-        for edge in bm.edges:
-            v1 = matrix_world @ edge.verts[0].co
-            v2 = matrix_world @ edge.verts[1].co
-            n1 = matrix_world.to_3x3() @ edge.verts[0].normal
-            n2 = matrix_world.to_3x3() @ edge.verts[1].normal
-
-            if feature == "sharp" and not edge.smooth:
-                self.edge_data["sharp"][0].extend([v1, v2])
-                self.edge_data["sharp"][1].extend([n1, n2])
-            elif feature == "seam" and edge.seam:
-                self.edge_data["seam"][0].extend([v1, v2])
-                self.edge_data["seam"][1].extend([n1, n2])
-            elif feature == "boundary" and edge.is_boundary:
-                self.edge_data["boundary"][0].extend([v1, v2])
-                self.edge_data["boundary"][1].extend([n1, n2])
-            elif feature == "non_manifold_e" and not edge.is_manifold:
-                self.edge_data["non_manifold_e"][0].extend([v1, v2])
-                self.edge_data["non_manifold_e"][1].extend([n1, n2])
-
-    def _analyze_face_feature(
-        self, bm: bmesh.types.BMesh, matrix_world: Matrix, feature: str
-    ) -> None:
-        """Analyze face-based features"""
-        for face in bm.faces:
-            verts = [matrix_world @ v.co for v in face.verts]
-            normals = [matrix_world.to_3x3() @ v.normal for v in face.verts]
-            vert_count = len(face.verts)
-
-            if feature == "tri" and vert_count == 3:
-                self.face_data["tri"][0].extend(verts)
-                self.face_data["tri"][1].extend(normals)
-            elif feature == "quad" and vert_count == 4:
-                self.face_data["quad"][0].extend(
-                    [verts[0], verts[1], verts[2], verts[0], verts[2], verts[3]]
-                )
-                self.face_data["quad"][1].extend(
-                    [
-                        normals[0],
-                        normals[1],
-                        normals[2],
-                        normals[0],
-                        normals[2],
-                        normals[3],
-                    ]
-                )
-            elif feature == "ngon" and vert_count > 4:
-                for i in range(1, vert_count - 1):
-                    self.face_data["ngon"][0].extend([verts[0], verts[i], verts[i + 1]])
-                    self.face_data["ngon"][1].extend(
-                        [normals[0], normals[i], normals[i + 1]]
+                if "tri" in features and vert_count == 3:
+                    self.face_data["tri"][0].extend(verts)
+                    self.face_data["tri"][1].extend(normals)
+                elif "quad" in features and vert_count == 4:
+                    self.face_data["quad"][0].extend(
+                        [verts[0], verts[1], verts[2], verts[0], verts[2], verts[3]]
                     )
-            elif feature == "non_planar" and vert_count > 3:
-                if not self.is_face_planar(face, self.scene_props.non_planar_threshold):
-                    for i in range(1, vert_count - 1):
-                        self.face_data["non_planar"][0].extend(
-                            [verts[0], verts[i], verts[i + 1]]
-                        )
-                        self.face_data["non_planar"][1].extend(
-                            [normals[0], normals[i], normals[i + 1]]
-                        )
+                    self.face_data["quad"][1].extend(
+                        [
+                            normals[0],
+                            normals[1],
+                            normals[2],
+                            normals[0],
+                            normals[2],
+                            normals[3],
+                        ]
+                    )
+                elif vert_count > 4:
+                    if "ngon" in features:
+                        for i in range(1, vert_count - 1):
+                            self.face_data["ngon"][0].extend(
+                                [verts[0], verts[i], verts[i + 1]]
+                            )
+                            self.face_data["ngon"][1].extend(
+                                [normals[0], normals[i], normals[i + 1]]
+                            )
+
+                    if "non_planar" in features and not self.is_face_planar(
+                        face, self.scene_props.non_planar_threshold
+                    ):
+                        for i in range(1, vert_count - 1):
+                            self.face_data["non_planar"][0].extend(
+                                [verts[0], verts[i], verts[i + 1]]
+                            )
+                            self.face_data["non_planar"][1].extend(
+                                [normals[0], normals[i], normals[i + 1]]
+                            )
 
 
 class MeshAnalyzerCache:
@@ -337,7 +350,7 @@ class MeshAnalyzerCache:
             # Convert method to function for message bus
             def mode_change_handler(*args):
                 obj = bpy.context.active_object
-                if obj and obj.type == 'MESH':
+                if obj and obj.type == "MESH":
                     self.invalidate_cache(obj.name)
 
             bpy.app.handlers.depsgraph_update_post.append(self._handle_depsgraph_update)
@@ -345,7 +358,7 @@ class MeshAnalyzerCache:
                 key=(bpy.types.Object, "mode"),
                 owner=object(),
                 args=(),
-                notify=mode_change_handler
+                notify=mode_change_handler,
             )
             self.__class__._handlers_registered = True
 
@@ -354,11 +367,11 @@ class MeshAnalyzerCache:
         """Handle object transformations and mesh modifications"""
         depsgraph = bpy.context.evaluated_depsgraph_get()
         for update in depsgraph.updates:
-            if isinstance(update.id, bpy.types.Object) and update.id.type == 'MESH':
+            if isinstance(update.id, bpy.types.Object) and update.id.type == "MESH":
                 obj = update.id
-                if obj.mode == 'EDIT':
+                if obj.mode == "EDIT":
                     self.invalidate_cache(obj.name)
-                elif obj.mode == 'OBJECT' and update.is_updated_transform:
+                elif obj.mode == "OBJECT" and update.is_updated_transform:
                     self.invalidate_cache(obj.name)
 
     def invalidate_cache(self, obj_name: str) -> None:

@@ -172,13 +172,15 @@ class GPUDrawer:
                 return ([], [])
 
             analyzer = MeshAnalyzer(self.active_object)
-            for data_dict in [
-                analyzer.vertex_data,
-                analyzer.edge_data,
-                analyzer.face_data,
-            ]:
-                if key in data_dict:
-                    return data_dict[key]
+
+            # Get data directly from the appropriate data dictionary
+            if key in analyzer.vertex_data:
+                return analyzer.vertex_data[key]
+            if key in analyzer.edge_data:
+                return analyzer.edge_data[key]
+            if key in analyzer.face_data:
+                return analyzer.face_data[key]
+
         except ValueError:
             pass
         return ([], [])
