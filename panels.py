@@ -21,7 +21,7 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         row = layout.row()
         row.operator(
             "view3d.mesh_analysis_overlay",
-            text="Show test Mesh Overlay",
+            text="Show Mesh Overlay",
             icon="OVERLAY",
             depress=drawer.is_running,
         )
