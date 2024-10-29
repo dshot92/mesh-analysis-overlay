@@ -11,13 +11,9 @@ modules = (
     panels,
 )
 
-if "bpy" in locals():
-    for module in modules:
-        importlib.reload(module)
-
-
 def register():
     for module in modules:
+        importlib.reload(module)
         module.register()
 
 
