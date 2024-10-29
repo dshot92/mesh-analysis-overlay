@@ -159,7 +159,9 @@ class MeshAnalyzer:
 
             is_newly_enabled = is_enabled and not was_enabled
             is_not_analyzed = feature not in self.analyzed_features
-            has_valid_cache = cached_data is None or (cached_data and len(cached_data[0]) > 0)
+            has_valid_cache = cached_data is None or (
+                cached_data and len(cached_data[0]) > 0
+            )
 
             if is_enabled and (is_newly_enabled or is_not_analyzed) and has_valid_cache:
                 changed_features.add(feature)
@@ -247,6 +249,9 @@ class MeshAnalyzer:
         need_verts = any(f in self.vertex_data for f in features)
         need_edges = any(f in self.edge_data for f in features)
         need_faces = any(f in self.face_data for f in features)
+
+        if get_debug_print():
+            print("analaysing")
 
         # Process vertices if needed
         if need_verts:
@@ -351,7 +356,9 @@ class MeshAnalyzerCache:
                 if obj and obj.type == "MESH":
                     MeshAnalyzerCache.get_instance().invalidate_cache(obj.name)
 
-            bpy.app.handlers.depsgraph_update_post.append(MeshAnalyzerCache._handle_depsgraph_update)
+            bpy.app.handlers.depsgraph_update_post.append(
+                MeshAnalyzerCache._handle_depsgraph_update
+            )
             bpy.msgbus.subscribe_rna(
                 key=(bpy.types.Object, "mode"),
                 owner=object(),
@@ -364,8 +371,13 @@ class MeshAnalyzerCache:
     def unregister():
         """Unregister all handlers and RNA subscribers"""
         if MeshAnalyzerCache._handlers_registered:
-            if MeshAnalyzerCache._handle_depsgraph_update in bpy.app.handlers.depsgraph_update_post:
-                bpy.app.handlers.depsgraph_update_post.remove(MeshAnalyzerCache._handle_depsgraph_update)
+            if (
+                MeshAnalyzerCache._handle_depsgraph_update
+                in bpy.app.handlers.depsgraph_update_post
+            ):
+                bpy.app.handlers.depsgraph_update_post.remove(
+                    MeshAnalyzerCache._handle_depsgraph_update
+                )
             bpy.msgbus.clear_by_owner(object())  # Clear all message bus subscriptions
             MeshAnalyzerCache._handlers_registered = False
             # Clear instance and cache
