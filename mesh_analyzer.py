@@ -6,6 +6,7 @@ import bpy
 import math
 from bpy.types import Object
 from mathutils import Matrix
+from bpy.app.handlers import persistent
 
 
 def get_debug_print() -> bool:
@@ -93,39 +94,9 @@ class MeshAnalyzer:
     def _check_if_full_update_needed(
         self, obj: Object, cached_state: Optional[Dict]
     ) -> bool:
-        """Determine if a full update of all features is needed"""
+        """Simplified update check since cache invalidation is handled by handlers"""
         if not cached_state:
-            if get_debug_print():
-                print(f"No cached state found for {obj.name}")
             return True
-
-        # Check mode and matrix changes
-        mode_changed = obj.mode != cached_state["mode"]
-        matrix_changed = not matrix_equivalent(obj.matrix_world, cached_state["matrix"])
-
-        # Force update in these cases:
-        # 1. Mode changed
-        # 2. In Edit mode
-        # 3. Matrix changed
-        # 4. Object mode with modifications
-        needs_update = (
-            mode_changed
-            or obj.data.is_editmode
-            or matrix_changed
-            or (
-                obj.mode == "OBJECT"
-                and obj.is_modified(scene=bpy.context.scene, settings="PREVIEW")
-            )
-        )
-
-        if needs_update:
-            self.is_dirty = True
-            if get_debug_print():
-                print(
-                    f"Update needed - Mode changed: {mode_changed}, Edit mode: {obj.data.is_editmode}, Matrix changed: {matrix_changed}"
-                )
-            return True
-
         return False
 
     def _determine_features_to_update(
@@ -350,14 +321,53 @@ class MeshAnalyzer:
 
 class MeshAnalyzerCache:
     _instance = None
+    _handlers_registered = False
 
     def __init__(self):
         if self._instance is not None:
             raise Exception("This class is a singleton!")
-        self.feature_cache = {}  # {obj_name: {feature: data}}
-        self.state_cache = {}  # {obj_name: {matrix, mode, toggle_state}}
+        self.feature_cache = {}
+        self.state_cache = {}
         self.max_cache_size = 10
         self.access_history = []
+        self._register_handlers()
+
+    def _register_handlers(self):
+        if not self._handlers_registered:
+            # Convert method to function for message bus
+            def mode_change_handler(*args):
+                obj = bpy.context.active_object
+                if obj and obj.type == 'MESH':
+                    self.invalidate_cache(obj.name)
+
+            bpy.app.handlers.depsgraph_update_post.append(self._handle_depsgraph_update)
+            bpy.msgbus.subscribe_rna(
+                key=(bpy.types.Object, "mode"),
+                owner=object(),
+                args=(),
+                notify=mode_change_handler
+            )
+            self.__class__._handlers_registered = True
+
+    @persistent
+    def _handle_depsgraph_update(self, scene, depsgraph):
+        """Handle object transformations and mesh modifications"""
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        for update in depsgraph.updates:
+            if isinstance(update.id, bpy.types.Object) and update.id.type == 'MESH':
+                obj = update.id
+                if obj.mode == 'EDIT':
+                    self.invalidate_cache(obj.name)
+                elif obj.mode == 'OBJECT' and update.is_updated_transform:
+                    self.invalidate_cache(obj.name)
+
+    def invalidate_cache(self, obj_name: str) -> None:
+        """Invalidate cache for specific object"""
+        if obj_name in self.feature_cache:
+            del self.feature_cache[obj_name]
+        if obj_name in self.state_cache:
+            del self.state_cache[obj_name]
+        self.access_history = [(o, f) for o, f in self.access_history if o != obj_name]
 
     @classmethod
     def get_instance(cls):
