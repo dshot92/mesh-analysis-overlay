@@ -7,6 +7,8 @@ import math
 from bpy.types import Object
 from mathutils import Matrix
 
+debug_print = False
+
 
 class MeshAnalyzer:
     def __init__(self, obj: Object):
@@ -96,17 +98,20 @@ class MeshAnalyzer:
             if mesh_modified or mode_changed or matrix_changed:
                 needs_full_update = True
                 self.is_dirty = True  # Mark analyzer as dirty to force recomputation
-                print(
-                    f"State changed - Mode: {mode_changed}, Matrix: {matrix_changed}, Mesh modified: {mesh_modified}"
-                )
+                if debug_print:
+                    print(
+                        f"State changed - Mode: {mode_changed}, Matrix: {matrix_changed}, Mesh modified: {mesh_modified}"
+                    )
         else:
             needs_full_update = True
-            print(f"No cached state found for {obj.name}")
+            if debug_print:
+                print(f"No cached state found for {obj.name}")
 
         # Determine which features need updating
         features_to_update: Set[str] = set()
         if needs_full_update:
-            print("Full update needed - updating all enabled features")
+            if debug_print:
+                print("Full update needed - updating all enabled features")
             features_to_update = {
                 f for f, enabled in current_toggle_state.items() if enabled
             }
@@ -118,15 +123,18 @@ class MeshAnalyzer:
                 if is_enabled and (
                     not was_enabled or feature not in self.analyzed_features
                 ):
-                    print(f"Toggle changed for feature: {feature}")
+                    if debug_print:
+                        print(f"Toggle changed for feature: {feature}")
                     features_to_update.add(feature)
         else:
-            print("No cache - analyzing all enabled features")
+            if debug_print:
+                print("No cache - analyzing all enabled features")
             features_to_update = {
                 f for f, enabled in current_toggle_state.items() if enabled
             }
 
-        print(f"Features to update: {features_to_update}")
+        if debug_print:
+            print(f"Features to update: {features_to_update}")
 
         # Update features and cache
         for feature in features_to_update:
@@ -148,12 +156,14 @@ class MeshAnalyzer:
         # Only use cache if object hasn't changed state
         cached_data = self.cache.get_feature_data(obj.name, feature)
         if cached_data and not self.is_dirty:
-            print(f"Cache HIT for {obj.name} - {feature}")
+            if debug_print:
+                print(f"Cache HIT for {obj.name} - {feature}")
             self._store_cached_data(feature, cached_data)
             self.analyzed_features.add(feature)
             return
 
-        print(f"Cache MISS for {obj.name} - {feature}")
+        if debug_print:
+            print(f"Cache MISS for {obj.name} - {feature}")
         # Analyze and cache the feature
         bm = bmesh.new()
         bm.from_mesh(obj.data)
