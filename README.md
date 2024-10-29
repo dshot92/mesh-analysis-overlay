@@ -1,4 +1,4 @@
-![image](https://i.imgur.com/1uex1bC.jpeg)
+![image](https://i.imgur.com/RDmjMy1.jpeg)
 
 # Mesh Analysis Overlay
 
