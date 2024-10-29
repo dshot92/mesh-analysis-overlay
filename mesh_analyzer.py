@@ -92,27 +92,29 @@ class MeshAnalyzer:
             bm = bmesh.new()
             bm.from_mesh(obj.data)
 
+            if get_debug_print():
+                print("")
+
             # Check cache for features
             uncached_features = set()
             for f in features_to_update:
                 cached_data = self.cache.get_feature_data(obj.name, f)
-                if cached_data and not self.is_dirty:
-                    data_len = len(cached_data[0]) if cached_data[0] else 0
-                    if (
-                        data_len > 0 and get_debug_print()
-                    ):  # Only print if there's actual data
+                if (cached_data is not None) and not self.is_dirty:
+                    if get_debug_print():
                         print(
-                            f"Cache HIT for {obj.name} - {f} (Feature data length: {data_len})"
+                            f"Cache HIT for {obj.name} - {f} (Feature data length: pos:{len(cached_data[0])}, norm:{len(cached_data[1])})"
                         )
                     self._store_cached_data(f, cached_data)
                     self.analyzed_features.add(f)
                 else:
+                    if get_debug_print():
+                        print(f"Cache MISS for {obj.name} - {f}")
                     uncached_features.add(f)
 
             # Analyze uncached features
             if uncached_features:
-                if get_debug_print():
-                    print(f"Analyzing features: {uncached_features}")
+                # if get_debug_print():
+                #     print(f"Analyzing features: {uncached_features}")
                 self._analyze_all_features(bm, obj.matrix_world, uncached_features)
 
                 # Cache results
@@ -140,8 +142,8 @@ class MeshAnalyzer:
     ) -> Set[str]:
         """Determine which features need to be updated"""
         if needs_full_update:
-            if get_debug_print():
-                print(f"Full update needed - updating all enabled features")
+            # if get_debug_print():
+            #     print(f"Full update needed - updating all enabled features")
             return {f for f, enabled in current_toggle_state.items() if enabled}
 
         if not cached_state:
@@ -166,8 +168,8 @@ class MeshAnalyzer:
             ):
                 changed_features.add(feature)
 
-        if changed_features and get_debug_print():
-            print(f"Changed features: {changed_features}")
+        # if changed_features and get_debug_print():
+        #     print(f"Changed features: {changed_features}")
 
         return changed_features
 
