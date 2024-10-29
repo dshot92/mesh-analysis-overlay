@@ -91,7 +91,7 @@ class MeshAnalyzer:
         if features_to_update:
             bm = bmesh.new()
             bm.from_mesh(obj.data)
-            
+
             # Check cache for features
             uncached_features = set()
             for f in features_to_update:
@@ -109,14 +109,14 @@ class MeshAnalyzer:
                 if get_debug_print():
                     print(f"Analyzing features: {uncached_features}")
                 self._analyze_all_features(bm, obj.matrix_world, uncached_features)
-                
+
                 # Cache results
                 for f in uncached_features:
                     self._cache_feature_data(obj.name, f)
                     self.analyzed_features.add(f)
-            
+
             bm.free()
-            
+
         self._update_cache_state(obj, current_toggle_state)
 
     def _check_if_full_update_needed(
@@ -293,24 +293,20 @@ class MeshAnalyzer:
                 normals = [matrix_world.to_3x3() @ v.normal for v in face.verts]
                 vert_count = len(face.verts)
 
-                if "tri" in features and vert_count == 3:
-                    self.face_data["tri"][0].extend(verts)
-                    self.face_data["tri"][1].extend(normals)
-                elif "quad" in features and vert_count == 4:
-                    self.face_data["quad"][0].extend(
-                        [verts[0], verts[1], verts[2], verts[0], verts[2], verts[3]]
-                    )
-                    self.face_data["quad"][1].extend(
-                        [
-                            normals[0],
-                            normals[1],
-                            normals[2],
-                            normals[0],
-                            normals[2],
-                            normals[3],
-                        ]
-                    )
-                elif vert_count > 4:
+                if vert_count == 3:
+                    if "tri" in features:
+                        self.face_data["tri"][0].extend(verts)
+                        self.face_data["tri"][1].extend(normals)
+                if vert_count == 4:
+                    if "quad" in features:
+                        for i in range(1, vert_count - 1):
+                            self.face_data["quad"][0].extend(
+                                [verts[0], verts[i], verts[i + 1]]
+                            )
+                            self.face_data["quad"][1].extend(
+                                [normals[0], normals[i], normals[i + 1]]
+                            )
+                if vert_count > 4:
                     if "ngon" in features:
                         for i in range(1, vert_count - 1):
                             self.face_data["ngon"][0].extend(
@@ -319,7 +315,7 @@ class MeshAnalyzer:
                             self.face_data["ngon"][1].extend(
                                 [normals[0], normals[i], normals[i + 1]]
                             )
-
+                if vert_count > 3:
                     if "non_planar" in features and not self.is_face_planar(
                         face, self.scene_props.non_planar_threshold
                     ):
