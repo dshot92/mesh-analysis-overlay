@@ -96,26 +96,30 @@ class MeshAnalyzer:
                 print(f"No cached state found for {obj.name}")
             return True
 
-        # Check data modification more thoroughly
-        mesh_modified = (
-            hasattr(obj.data, "is_updated")
-            and obj.data.is_updated
-            or obj.data.update_tag  # Check if mesh has pending updates
-            or obj.data.is_editmode  # Force update when in edit mode
-        )
-
+        # Check mode and matrix changes
         mode_changed = obj.mode != cached_state["mode"]
         matrix_changed = not matrix_equivalent(obj.matrix_world, cached_state["matrix"])
 
-        # Force update when switching out of edit mode
-        if cached_state["mode"] == "EDIT" and obj.mode == "OBJECT":
-            mesh_modified = True
+        # Force update in these cases:
+        # 1. Mode changed
+        # 2. In Edit mode
+        # 3. Matrix changed
+        # 4. Object mode with modifications
+        needs_update = (
+            mode_changed
+            or obj.data.is_editmode
+            or matrix_changed
+            or (
+                obj.mode == "OBJECT"
+                and obj.is_modified(scene=bpy.context.scene, settings="PREVIEW")
+            )
+        )
 
-        if mesh_modified or mode_changed or matrix_changed:
+        if needs_update:
             self.is_dirty = True
             if debug_print:
                 print(
-                    f"State changed - Mode: {mode_changed}, Matrix: {matrix_changed}, Mesh modified: {mesh_modified}"
+                    f"Update needed - Mode changed: {mode_changed}, Edit mode: {obj.data.is_editmode}, Matrix changed: {matrix_changed}"
                 )
             return True
 
