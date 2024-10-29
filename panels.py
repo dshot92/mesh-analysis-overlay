@@ -25,87 +25,111 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             icon="OVERLAY",
             depress=drawer.is_running,
         )
+        ROW_SCALE = 0.5
+        row = layout.row()
+        row.scale_y = ROW_SCALE
+        row.alignment = "CENTER"
+        row.label(text="Overlays are cached.", icon="INFO")
+        row = layout.row()
+        row.scale_y = ROW_SCALE
+        row.alignment = "CENTER"
+        row.label(text="Turn off and on again")
+        row = layout.row()
+        row.scale_y = ROW_SCALE
+        row.alignment = "CENTER"
+        row.label(text="while in Object Mode to refresh.")
 
-        layout.label(text="Faces")
-        # Triangles row
-        row = layout.row(align=True)
-        split = row.split(factor=factor)
-        split.prop(props, "show_tri_faces", text="Triangles")
-        split.prop(props, "tri_faces_color", text="")
+        # Faces panel
+        header, panel = layout.panel("faces_panel", default_closed=False)
+        header.label(text="Faces")
+        if panel:
+            # Triangles row
+            row = panel.row(align=True)
+            split = row.split(factor=factor)
+            split.prop(props, "show_tri_faces", text="Triangles")
+            split.prop(props, "tri_faces_color", text="")
 
-        # Quads row
-        row = layout.row(align=True)
-        split = row.split(factor=factor)
-        split.prop(props, "show_quad_faces", text="Quads")
-        split.prop(props, "quad_faces_color", text="")
+            # Quads row
+            row = panel.row(align=True)
+            split = row.split(factor=factor)
+            split.prop(props, "show_quad_faces", text="Quads")
+            split.prop(props, "quad_faces_color", text="")
 
-        # N-gons row
-        row = layout.row(align=True)
-        split = row.split(factor=factor)
-        split.prop(props, "show_ngon_faces", text="N-Gons")
-        split.prop(props, "ngon_faces_color", text="")
+            # N-gons row
+            row = panel.row(align=True)
+            split = row.split(factor=factor)
+            split.prop(props, "show_ngon_faces", text="N-Gons")
+            split.prop(props, "ngon_faces_color", text="")
 
-        # Non-planar faces row
-        row = layout.row(align=True)
-        split = row.split(factor=factor)
-        split.prop(props, "show_non_planar_faces", text="Non-Planar Faces")
-        split.prop(props, "non_planar_faces_color", text="")
+            # Non-planar faces row
+            row = panel.row(align=True)
+            split = row.split(factor=factor)
+            split.prop(props, "show_non_planar_faces", text="Non-Planar Faces")
+            split.prop(props, "non_planar_faces_color", text="")
 
-        layout.label(text="Edges")
-        # Non-manifold edges row
-        row = layout.row(align=True)
-        split = row.split(factor=factor)
-        split.prop(props, "show_non_manifold_e_edges", text="Non-Manifold Edges")
-        split.prop(props, "non_manifold_e_edges_color", text="")
+        # Edges panel
+        header, panel = layout.panel("edges_panel", default_closed=False)
+        header.label(text="Edges")
+        if panel:
+            # Non-manifold edges row
+            row = panel.row(align=True)
+            split = row.split(factor=factor)
+            split.prop(props, "show_non_manifold_e_edges", text="Non-Manifold Edges")
+            split.prop(props, "non_manifold_e_edges_color", text="")
 
-        # Sharp edges row
-        row = layout.row(align=True)
-        split = row.split(factor=factor)
-        split.prop(props, "show_sharp_edges", text="Sharp Edges")
-        split.prop(props, "sharp_edges_color", text="")
+            # Sharp edges row
+            row = panel.row(align=True)
+            split = row.split(factor=factor)
+            split.prop(props, "show_sharp_edges", text="Sharp Edges")
+            split.prop(props, "sharp_edges_color", text="")
 
-        # Seam edges row
-        row = layout.row(align=True)
-        split = row.split(factor=factor)
-        split.prop(props, "show_seam_edges", text="Seam Edges")
-        split.prop(props, "seam_edges_color", text="")
+            # Seam edges row
+            row = panel.row(align=True)
+            split = row.split(factor=factor)
+            split.prop(props, "show_seam_edges", text="Seam Edges")
+            split.prop(props, "seam_edges_color", text="")
 
-        # Boundary edges row
-        row = layout.row(align=True)
-        split = row.split(factor=factor)
-        split.prop(props, "show_boundary_edges", text="Boundary Edges")
-        split.prop(props, "boundary_edges_color", text="")
+            # Boundary edges row
+            row = panel.row(align=True)
+            split = row.split(factor=factor)
+            split.prop(props, "show_boundary_edges", text="Boundary Edges")
+            split.prop(props, "boundary_edges_color", text="")
 
-        layout.label(text="Vertices")
-        # Singles row
-        row = layout.row(align=True)
-        split = row.split(factor=factor)
-        split.prop(props, "show_single_vertices", text="Single Vertices")
-        split.prop(props, "single_vertices_color", text="")
+        # Vertices panel
+        header, panel = layout.panel("vertices_panel", default_closed=False)
+        header.label(text="Vertices")
+        if panel:
+            # Singles row
+            row = panel.row(align=True)
+            split = row.split(factor=factor)
+            split.prop(props, "show_single_vertices", text="Single Vertices")
+            split.prop(props, "single_vertices_color", text="")
 
-        # Non-manifold vertices row
-        row = layout.row(align=True)
-        split = row.split(factor=factor)
-        split.prop(props, "show_non_manifold_v_vertices", text="Non-Manifold Vertices")
-        split.prop(props, "non_manifold_v_vertices_color", text="")
+            # Non-manifold vertices row
+            row = panel.row(align=True)
+            split = row.split(factor=factor)
+            split.prop(
+                props, "show_non_manifold_v_vertices", text="Non-Manifold Vertices"
+            )
+            split.prop(props, "non_manifold_v_vertices_color", text="")
 
-        # N-poles row
-        row = layout.row(align=True)
-        split = row.split(factor=factor)
-        split.prop(props, "show_n_pole_vertices", text="N-Poles (3)")
-        split.prop(props, "n_pole_vertices_color", text="")
+            # N-poles row
+            row = panel.row(align=True)
+            split = row.split(factor=factor)
+            split.prop(props, "show_n_pole_vertices", text="N-Poles (3)")
+            split.prop(props, "n_pole_vertices_color", text="")
 
-        # E-poles row
-        row = layout.row(align=True)
-        split = row.split(factor=factor)
-        split.prop(props, "show_e_pole_vertices", text="E-Poles (5)")
-        split.prop(props, "e_pole_vertices_color", text="")
+            # E-poles row
+            row = panel.row(align=True)
+            split = row.split(factor=factor)
+            split.prop(props, "show_e_pole_vertices", text="E-Poles (5)")
+            split.prop(props, "e_pole_vertices_color", text="")
 
-        # High-poles row
-        row = layout.row(align=True)
-        split = row.split(factor=factor)
-        split.prop(props, "show_high_pole_vertices", text="High-Poles (6+)")
-        split.prop(props, "high_pole_vertices_color", text="")
+            # High-poles row
+            row = panel.row(align=True)
+            split = row.split(factor=factor)
+            split.prop(props, "show_high_pole_vertices", text="High-Poles (6+)")
+            split.prop(props, "high_pole_vertices_color", text="")
 
         # Offset settings
         header, panel = layout.panel("panel_settings", default_closed=True)
