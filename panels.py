@@ -21,7 +21,7 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         row = layout.row()
         row.operator(
             "view3d.mesh_analysis_overlay",
-            text="Show Mesh Overlay",
+            text="Show test Mesh Overlay",
             icon="OVERLAY",
             depress=drawer.is_running,
         )
@@ -117,32 +117,7 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             panel.prop(props, "overlay_vertex_radius", text="Overlay Vertex Radius")
 
 
-class MeshAnalysisOverlayPreferences(bpy.types.AddonPreferences):
-    bl_idname = __package__
-
-    non_planar_threshold: bpy.props.FloatProperty(
-        name="Non-Planar Threshold",
-        description="Threshold angle for non-planar face detection",
-        default=0.0001,
-        min=0.0,
-        max=1.0,
-        precision=5,
-    )
-
-    debug_print: bpy.props.BoolProperty(
-        name="Debug Print", description="Enable debug print statements", default=False
-    )
-
-    def draw(self, context):
-        layout = self.layout
-        layout.prop(self, "non_planar_threshold")
-        layout.prop(self, "debug_print")
-
-
-classes = (
-    Mesh_Analysis_Overlay_Panel,
-    MeshAnalysisOverlayPreferences,
-)
+classes = (Mesh_Analysis_Overlay_Panel,)
 
 
 def register():
