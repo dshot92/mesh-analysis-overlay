@@ -97,8 +97,13 @@ class MeshAnalyzer:
             for f in features_to_update:
                 cached_data = self.cache.get_feature_data(obj.name, f)
                 if cached_data and not self.is_dirty:
-                    if get_debug_print():
-                        print(f"Cache HIT for {obj.name} - {f}")
+                    data_len = len(cached_data[0]) if cached_data[0] else 0
+                    if (
+                        data_len > 0 and get_debug_print()
+                    ):  # Only print if there's actual data
+                        print(
+                            f"Cache HIT for {obj.name} - {f} (Feature data length: {data_len})"
+                        )
                     self._store_cached_data(f, cached_data)
                     self.analyzed_features.add(f)
                 else:
@@ -136,12 +141,10 @@ class MeshAnalyzer:
         """Determine which features need to be updated"""
         if needs_full_update:
             if get_debug_print():
-                print("Full update needed - updating all enabled features")
+                print(f"Full update needed - updating all enabled features")
             return {f for f, enabled in current_toggle_state.items() if enabled}
 
         if not cached_state:
-            if get_debug_print():
-                print("No cache - analyzing all enabled features")
             return {f for f, enabled in current_toggle_state.items() if enabled}
 
         # Get only features that have actually changed state
@@ -150,8 +153,16 @@ class MeshAnalyzer:
 
         for feature, is_enabled in current_toggle_state.items():
             was_enabled = cached_toggles.get(feature, False)
-            if is_enabled and (
-                not was_enabled or feature not in self.analyzed_features
+            cached_data = self.cache.get_feature_data(self.active_object.name, feature)
+
+            # Only add to changed_features if:
+            # 1. Feature is enabled AND
+            # 2. Either it wasn't previously enabled OR it's not analyzed yet
+            # 3. AND either we don't have cached data OR the cached data has content
+            if (
+                is_enabled
+                and (not was_enabled or feature not in self.analyzed_features)
+                and (cached_data is None or (cached_data and len(cached_data[0]) > 0))
             ):
                 changed_features.add(feature)
 
@@ -363,11 +374,15 @@ class MeshAnalyzerCache:
         """Handle object transformations and mesh modifications"""
         depsgraph = bpy.context.evaluated_depsgraph_get()
         for update in depsgraph.updates:
+            # Only process mesh objects
             if isinstance(update.id, bpy.types.Object) and update.id.type == "MESH":
                 obj = update.id
-                if obj.mode == "EDIT":
-                    self.invalidate_cache(obj.name)
-                elif obj.mode == "OBJECT" and update.is_updated_transform:
+                # Invalidate cache if object is transformed or geometry is modified
+                if update.is_updated_transform or update.is_updated_geometry:
+                    if get_debug_print():
+                        print(
+                            f"Invalidating cache for {obj.name} due to {'transform' if update.is_updated_transform else 'geometry'} update"
+                        )
                     self.invalidate_cache(obj.name)
 
     def invalidate_cache(self, obj_name: str) -> None:
