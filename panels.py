@@ -59,8 +59,8 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         # Non-manifold edges row
         row = layout.row(align=True)
         split = row.split(factor=factor)
-        split.prop(props, "show_non_manifold_edges", text="Non-Manifold Edges")
-        split.prop(props, "non_manifold_edges_color", text="")
+        split.prop(props, "show_non_manifold_e_edges", text="Non-Manifold Edges")
+        split.prop(props, "non_manifold_e_edges_color", text="")
 
         # Sharp edges row
         row = layout.row(align=True)
@@ -90,8 +90,8 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         # Non-manifold vertices row
         row = layout.row(align=True)
         split = row.split(factor=factor)
-        split.prop(props, "show_non_manifold_vertices", text="Non-Manifold Vertices")
-        split.prop(props, "non_manifold_vertices_color", text="")
+        split.prop(props, "show_non_manifold_v_vertices", text="Non-Manifold Vertices")
+        split.prop(props, "non_manifold_v_vertices_color", text="")
 
         # N-poles row
         row = layout.row(align=True)

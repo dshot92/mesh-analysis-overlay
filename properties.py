@@ -68,12 +68,12 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     )
 
     # EDGES
-    show_non_manifold_edges: BoolProperty(
+    show_non_manifold_e_edges: BoolProperty(
         name="Show Non-Manifold Edges",
         description="Show non-manifold edges",
         default=False,
     )
-    non_manifold_edges_color: FloatVectorProperty(
+    non_manifold_e_edges_color: FloatVectorProperty(
         name="Non-Manifold Edges Color",
         subtype="COLOR",
         default=(1.0, 0.5, 0.0, 0.5),
@@ -139,12 +139,12 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=1.0,
     )
 
-    show_non_manifold_vertices: BoolProperty(
+    show_non_manifold_v_vertices: BoolProperty(
         name="Show Non-Manifold Vertices",
         description="Show non-manifold vertices",
         default=False,
     )
-    non_manifold_vertices_color: FloatVectorProperty(
+    non_manifold_v_vertices_color: FloatVectorProperty(
         name="Non-Manifold Vertices Color",
         subtype="COLOR",
         default=(1.0, 0.0, 0.5, 0.5),
