@@ -412,13 +412,8 @@ class MeshAnalyzerCache:
         self.access_history.clear()
 
 
-def matrix_equivalent(m1: Matrix, m2: Matrix, threshold: float = 1e-6) -> bool:
-    """Compare matrices with threshold to handle floating point imprecision"""
+def matrix_equivalent(m1: Matrix, m2: Matrix) -> bool:
+    """Compare matrices for equality"""
     if m1 is None or m2 is None:
         return m1 is m2
-
-    # Convert matrices to flat lists for comparison
-    m1_list = [item for row in m1 for item in row]
-    m2_list = [item for row in m2 for item in row]
-
-    return all(abs(a - b) < threshold for a, b in zip(m1_list, m2_list))
+    return m1 == m2
