@@ -1,9 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-# ----------------------------------------------------------
-# Author: Daniele Stochino (dshot92)
-# ----------------------------------------------------------
-
 import bpy
 from bpy.props import BoolProperty, FloatVectorProperty, FloatProperty
 from bpy.types import PropertyGroup
