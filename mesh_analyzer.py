@@ -7,7 +7,7 @@ import math
 from bpy.types import Object
 from mathutils import Matrix
 
-debug_print = False
+debug_print = True
 
 
 class MeshAnalyzer:
@@ -79,72 +79,88 @@ class MeshAnalyzer:
         cached_state = self.cache.get_object_state(obj.name)
         current_toggle_state = self._get_current_toggle_state()
 
-        # Check if mesh data has been modified (edit mode changes)
-        mesh_modified = False
-        if cached_state and hasattr(obj.data, "is_updated"):
-            mesh_modified = obj.data.is_updated
+        needs_full_update = self._check_if_full_update_needed(obj, cached_state)
+        features_to_update = self._determine_features_to_update(
+            needs_full_update, cached_state, current_toggle_state
+        )
 
-        # Force full update if:
-        # 1. Mesh was modified (edit mode changes)
-        # 2. Object mode changed
-        # 3. Transform changed
-        needs_full_update = False
-        if cached_state:
-            mode_changed = obj.mode != cached_state["mode"]
-            matrix_changed = not matrix_equivalent(
-                obj.matrix_world, cached_state["matrix"]
-            )
+        self._process_features(obj, features_to_update)
+        self._update_cache_state(obj, current_toggle_state)
 
-            if mesh_modified or mode_changed or matrix_changed:
-                needs_full_update = True
-                self.is_dirty = True  # Mark analyzer as dirty to force recomputation
-                if debug_print:
-                    print(
-                        f"State changed - Mode: {mode_changed}, Matrix: {matrix_changed}, Mesh modified: {mesh_modified}"
-                    )
-        else:
-            needs_full_update = True
+    def _check_if_full_update_needed(
+        self, obj: Object, cached_state: Optional[Dict]
+    ) -> bool:
+        """Determine if a full update of all features is needed"""
+        if not cached_state:
             if debug_print:
                 print(f"No cached state found for {obj.name}")
+            return True
 
-        # Determine which features need updating
-        features_to_update: Set[str] = set()
+        mesh_modified = hasattr(obj.data, "is_updated") and obj.data.is_updated
+        mode_changed = obj.mode != cached_state["mode"]
+        matrix_changed = not matrix_equivalent(obj.matrix_world, cached_state["matrix"])
+
+        if mesh_modified or mode_changed or matrix_changed:
+            self.is_dirty = True
+            if debug_print:
+                print(
+                    f"State changed - Mode: {mode_changed}, Matrix: {matrix_changed}, Mesh modified: {mesh_modified}"
+                )
+            return True
+
+        return False
+
+    def _determine_features_to_update(
+        self,
+        needs_full_update: bool,
+        cached_state: Optional[Dict],
+        current_toggle_state: Dict[str, bool],
+    ) -> Set[str]:
+        """Determine which features need to be updated"""
         if needs_full_update:
             if debug_print:
                 print("Full update needed - updating all enabled features")
-            features_to_update = {
-                f for f, enabled in current_toggle_state.items() if enabled
-            }
-        elif cached_state:
-            # Check which toggles changed state
-            cached_toggles = cached_state["toggle_state"]
-            for feature, is_enabled in current_toggle_state.items():
-                was_enabled = cached_toggles.get(feature, False)
-                if is_enabled and (
-                    not was_enabled or feature not in self.analyzed_features
-                ):
-                    if debug_print:
-                        print(f"Toggle changed for feature: {feature}")
-                    features_to_update.add(feature)
-        else:
+            return {f for f, enabled in current_toggle_state.items() if enabled}
+
+        if not cached_state:
             if debug_print:
                 print("No cache - analyzing all enabled features")
-            features_to_update = {
-                f for f, enabled in current_toggle_state.items() if enabled
-            }
+            return {f for f, enabled in current_toggle_state.items() if enabled}
 
+        return self._get_changed_features(
+            cached_state["toggle_state"], current_toggle_state
+        )
+
+    def _get_changed_features(
+        self, cached_toggles: Dict[str, bool], current_toggle_state: Dict[str, bool]
+    ) -> Set[str]:
+        """Identify which features have changed state"""
+        features_to_update = set()
+        for feature, is_enabled in current_toggle_state.items():
+            was_enabled = cached_toggles.get(feature, False)
+            if is_enabled and (
+                not was_enabled or feature not in self.analyzed_features
+            ):
+                if debug_print:
+                    print(f"Toggle changed for feature: {feature}")
+                features_to_update.add(feature)
+        return features_to_update
+
+    def _process_features(self, obj: Object, features_to_update: Set[str]) -> None:
+        """Process all features that need updating"""
         if debug_print:
             print(f"Features to update: {features_to_update}")
-
-        # Update features and cache
         for feature in features_to_update:
             self.analyze_specific_feature(obj, feature)
 
-        # Update cache state after analysis
+    def _update_cache_state(
+        self, obj: Object, current_toggle_state: Dict[str, bool]
+    ) -> None:
+        """Update the cache with current object state"""
         self.cache.update_object_state(
             obj.name,
             obj.matrix_world.copy(),
-            obj.mode,  # Make sure mode is being stored
+            obj.mode,
             current_toggle_state,
         )
 
