@@ -157,15 +157,11 @@ class MeshAnalyzer:
             was_enabled = cached_toggles.get(feature, False)
             cached_data = self.cache.get_feature_data(self.active_object.name, feature)
 
-            # Only add to changed_features if:
-            # 1. Feature is enabled AND
-            # 2. Either it wasn't previously enabled OR it's not analyzed yet
-            # 3. AND either we don't have cached data OR the cached data has content
-            if (
-                is_enabled
-                and (not was_enabled or feature not in self.analyzed_features)
-                and (cached_data is None or (cached_data and len(cached_data[0]) > 0))
-            ):
+            is_newly_enabled = is_enabled and not was_enabled
+            is_not_analyzed = feature not in self.analyzed_features
+            has_valid_cache = cached_data is None or (cached_data and len(cached_data[0]) > 0)
+
+            if is_enabled and (is_newly_enabled or is_not_analyzed) and has_valid_cache:
                 changed_features.add(feature)
 
         # if changed_features and get_debug_print():
@@ -345,6 +341,38 @@ class MeshAnalyzerCache:
     _instance = None
     _handlers_registered = False
 
+    @staticmethod
+    def register():
+        """Register all handlers and RNA subscribers"""
+        if not MeshAnalyzerCache._handlers_registered:
+            # Convert method to function for message bus
+            def mode_change_handler(*args):
+                obj = bpy.context.active_object
+                if obj and obj.type == "MESH":
+                    MeshAnalyzerCache.get_instance().invalidate_cache(obj.name)
+
+            bpy.app.handlers.depsgraph_update_post.append(MeshAnalyzerCache._handle_depsgraph_update)
+            bpy.msgbus.subscribe_rna(
+                key=(bpy.types.Object, "mode"),
+                owner=object(),
+                args=(),
+                notify=mode_change_handler,
+            )
+            MeshAnalyzerCache._handlers_registered = True
+
+    @staticmethod
+    def unregister():
+        """Unregister all handlers and RNA subscribers"""
+        if MeshAnalyzerCache._handlers_registered:
+            if MeshAnalyzerCache._handle_depsgraph_update in bpy.app.handlers.depsgraph_update_post:
+                bpy.app.handlers.depsgraph_update_post.remove(MeshAnalyzerCache._handle_depsgraph_update)
+            bpy.msgbus.clear_by_owner(object())  # Clear all message bus subscriptions
+            MeshAnalyzerCache._handlers_registered = False
+            # Clear instance and cache
+            if MeshAnalyzerCache._instance:
+                MeshAnalyzerCache._instance.clear()
+                MeshAnalyzerCache._instance = None
+
     def __init__(self):
         if self._instance is not None:
             raise Exception("This class is a singleton!")
@@ -352,27 +380,10 @@ class MeshAnalyzerCache:
         self.state_cache = {}
         self.max_cache_size = 10
         self.access_history = []
-        self._register_handlers()
 
-    def _register_handlers(self):
-        if not self._handlers_registered:
-            # Convert method to function for message bus
-            def mode_change_handler(*args):
-                obj = bpy.context.active_object
-                if obj and obj.type == "MESH":
-                    self.invalidate_cache(obj.name)
-
-            bpy.app.handlers.depsgraph_update_post.append(self._handle_depsgraph_update)
-            bpy.msgbus.subscribe_rna(
-                key=(bpy.types.Object, "mode"),
-                owner=object(),
-                args=(),
-                notify=mode_change_handler,
-            )
-            self.__class__._handlers_registered = True
-
+    @staticmethod
     @persistent
-    def _handle_depsgraph_update(self, scene, depsgraph):
+    def _handle_depsgraph_update(scene, depsgraph):
         """Handle object transformations and mesh modifications"""
         depsgraph = bpy.context.evaluated_depsgraph_get()
         for update in depsgraph.updates:
@@ -385,7 +396,7 @@ class MeshAnalyzerCache:
                         print(
                             f"Invalidating cache for {obj.name} due to {'transform' if update.is_updated_transform else 'geometry'} update"
                         )
-                    self.invalidate_cache(obj.name)
+                    MeshAnalyzerCache.get_instance().invalidate_cache(obj.name)
 
     def invalidate_cache(self, obj_name: str) -> None:
         """Invalidate cache for specific object"""
