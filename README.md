@@ -1,15 +1,13 @@
-# Mesh Analysis Overlay
-
-Mesh analysis visualization for Blender.
-
 ![image](https://i.imgur.com/1uex1bC.jpeg)
 
-## Performance Note
-Since the analysis can be a heavy process, it does not recalculate on every frame or while moving the object or editing the mesh in Edit Mode.
+# Mesh Analysis Overlay
 
-To refresh the cache overlays, toggle the overlay off and on again while in Object Mode.
-
-## Overlays
+> ## Performance Note
+> Since the analysis can be a heavy process, it does not recalculate on every frame.
+>
+> Cached data per object allows for editing the mesh in object or edit mode with no problems.
+>
+> **Refresh the overlay by toggling it off and on while in Object Mode**.
 
 ### Vertex Overlays
 - Single vertices
@@ -35,4 +33,3 @@ To refresh the cache overlays, toggle the overlay off and on again while in Obje
 - Opacity control
 - Offset distance
 - Element size
-
