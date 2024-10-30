@@ -25,7 +25,7 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             icon="OVERLAY",
             depress=drawer.is_running,
         )
-        ROW_SCALE = 0.35
+        ROW_SCALE = 0.5
         ALIGNMENT = "LEFT"
         row = layout.row()
         row.scale_y = ROW_SCALE
