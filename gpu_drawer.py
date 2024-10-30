@@ -13,7 +13,7 @@ from .mesh_analyzer import MeshAnalyzer
 
 
 logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.DEBUG)
 logger.propagate = False
 
 if not logger.handlers:
@@ -117,22 +117,22 @@ class GPUDrawer:
             bpy.context.scene.Mesh_Analysis_Overlay_Properties.overlay_edge_width
         )
 
-        logger.debug("\n=== Draw Call ===")
-        logger.debug(f"Object: {obj.name}")
-        logger.debug(f"Batch count: {len(self.batches)}")
+        # logger.debug("\n=== Draw Call ===")
+        # logger.debug(f"Object: {obj.name}")
+        # logger.debug(f"Batch count: {len(self.batches)}")
 
         if (
             not self.batches
             or self._current_analyzer is None
             or self._current_analyzer.obj != obj
         ):
-            logger.debug("Forcing batch update...")
+            # logger.debug("Forcing batch update...")
             self.update_batches(obj)
 
-        logger.debug("Drawing batches...")
+        # logger.debug("Drawing batches...")
         self.shader.bind()
         for feature, batch_data in self.batches.items():
-            logger.debug(f"- Drawing {feature}")
+            # logger.debug(f"- Drawing {feature}")
             batch_data["batch"].draw(self.shader)
 
         # Reset GPU state
