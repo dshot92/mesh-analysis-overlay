@@ -3,6 +3,7 @@
 import bpy
 import bmesh
 import logging
+import math
 
 from typing import Tuple, List
 from bpy.types import Object
@@ -23,71 +24,79 @@ class MeshCache:
     def __init__(self):
         self.feature_cache = (
             {}
-        )  # Format: {obj_name: {'is_valid': bool, 'features': {feature: {'verts': [], 'normals': []}}}}
+        )  # Format: {obj_name: {'is_valid': bool, 'features': {feature: {'indices': []}}}}
 
-    def get(self, obj_name: str, feature: str) -> Tuple[bool, List, List]:
-        """Get cached feature data for an object"""
+    def get(self, obj_name: str, feature: str) -> Tuple[bool, List]:
+        """Get cached feature indices for an object"""
         obj_cache = self.feature_cache.get(obj_name)
         if not obj_cache or not obj_cache.get("is_valid", False):
-            return (False, [], [])
+            return (False, [])
 
         feature_data = obj_cache["features"].get(feature)
         if not feature_data:
-            return (False, [], [])
+            return (False, [])
 
-        return (True, feature_data["verts"], feature_data["normals"])
+        return (True, feature_data["indices"])
 
-    def set(self, obj_name: str, feature: str, verts: List, normals: List):
-        """Cache feature data for an object"""
+    def set(self, obj_name: str, feature: str, indices: List):
+        """Cache feature indices for an object"""
         if obj_name not in self.feature_cache:
             self.feature_cache[obj_name] = {
-                "is_valid": True,  # Add is_valid flag
+                "is_valid": True,
                 "features": {},
             }
 
         self.feature_cache[obj_name]["features"][feature] = {
-            "verts": verts,
-            "normals": normals,
+            "indices": indices,
         }
 
     def clear(self):
         """Clear all cached data"""
         self.feature_cache.clear()
 
-    def invalidate(self, obj_name: str = None):
+    def invalidate(self, obj_name: str = None, feature: str = None):
         """Invalidate cache for specific object or all objects"""
         if obj_name:
             if obj_name in self.feature_cache:
-                self.feature_cache[obj_name][
-                    "is_valid"
-                ] = False  # Set invalid instead of removing
+                if feature:
+                    self.feature_cache[obj_name]["features"][feature] = {
+                        "is_valid": False,
+                        "indices": [],
+                    }
+                else:
+                    self.feature_cache[obj_name][
+                        "is_valid"
+                    ] = False  # Set invalid instead of removing
         else:
             self.feature_cache.clear()
 
 
 class MeshAnalyzer:
     _cache = MeshCache()
+    _analyzer_cache = []
+    _analyzer_cache_size = 5
 
     vertex_features = {
-        "single_vertices",  # corresponds to show_single_vertices
-        "non_manifold_v_vertices",  # corresponds to show_non_manifold_v_vertices
-        "n_pole_vertices",  # corresponds to show_n_pole_vertices
-        "e_pole_vertices",  # corresponds to show_e_pole_vertices
-        "high_pole_vertices",  # corresponds to show_high_pole_vertices
+        "single_vertices",
+        "non_manifold_v_vertices",
+        "n_pole_vertices",
+        "e_pole_vertices",
+        "high_pole_vertices",
     }
 
     edge_features = {
-        "non_manifold_e_edges",  # corresponds to show_non_manifold_e_edges
-        "sharp_edges",  # corresponds to show_sharp_edges
-        "seam_edges",  # corresponds to show_seam_edges
-        "boundary_edges",  # corresponds to show_boundary_edges
+        "non_manifold_e_edges",
+        "sharp_edges",
+        "seam_edges",
+        "boundary_edges",
     }
 
     face_features = {
-        "tri_faces",  # corresponds to show_tri_faces
-        "quad_faces",  # corresponds to show_quad_faces
-        "ngon_faces",  # corresponds to show_ngon_faces
-        "non_planar_faces",  # corresponds to show_non_planar_faces
+        "tri_faces",
+        "quad_faces",
+        "ngon_faces",
+        "non_planar_faces",
+        "degenerate_faces",
     }
 
     def __init__(self, obj: Object):
@@ -99,231 +108,181 @@ class MeshAnalyzer:
         self.scene_props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
         self.analyzed_features = {}
 
-    def analyze_feature(self, feature: str) -> Tuple[List, List]:
-        logger.debug(f"\n=== Starting Analysis ===")
-        logger.debug(f"Object: {self.obj.name}")
-        logger.debug(f"Feature: {feature}")
+    @classmethod
+    def get_analyzer(cls, obj: Object) -> "MeshAnalyzer":
+        # Check if object already has an analyzer in cache
+        for analyzer in cls._analyzer_cache:
+            if analyzer.obj == obj:
+                return analyzer
+
+        # Create new analyzer
+        analyzer = cls(obj)
+        logger.debug(f"\nCreating new analyzer for {obj.name}\n")
+
+        # Add to cache, removing oldest if at capacity
+        if len(cls._analyzer_cache) >= cls._analyzer_cache_size:
+            cls._analyzer_cache.pop(0)
+        cls._analyzer_cache.append(analyzer)
+        return analyzer
+
+    @classmethod
+    def clear_analyzer_cache(cls):
+        cls._analyzer_cache.clear()
+
+    def analyze_feature(self, feature: str) -> List:
+        # Add feature tracking to avoid redundant cache checks
+        if feature in self.analyzed_features:
+            return self.analyzed_features[feature]
 
         # Get cached result if available
         cached = self._cache.get(self.obj.name, feature)
         if cached[0]:
-            logger.debug(f"✓ Using cached data")
-            logger.debug(f"Found {len(cached[1])} vertices in cache")
-            return (cached[1], cached[2])
+            logger.debug(f"Cache hit: {self.obj.name} - {feature}")
+            self.analyzed_features[feature] = cached[1]
+            return cached[1]
 
-        logger.debug("× Cache miss - performing new analysis")
-
+        logger.debug(f"Cache miss: {self.obj.name} - {feature}")
         # Analyze and cache the result
-        verts, normals = self._analyze_feature_impl(feature)
-        logger.debug(f"✓ Analysis complete")
-        logger.debug(f"Found {len(verts)} vertices")
-        logger.debug(f"Found {len(normals)} normals")
-        self._cache.set(self.obj.name, feature, verts, normals)
-        return (verts, normals)
+        indices = self._analyze_feature_impl(feature)
+        self._cache.set(self.obj.name, feature, indices)
+        self.analyzed_features[feature] = indices
+        return indices
 
-    def _analyze_feature_impl(self, feature: str) -> Tuple[List, List]:
-        logger.debug(f"\n=== Feature Implementation ===")
-        logger.debug(f"Creating BMesh for {self.obj.name}")
+    def _analyze_feature_impl(self, feature: str) -> List:
         bm = bmesh.new()
         bm.from_mesh(self.obj.data)
         bm.edges.ensure_lookup_table()
         bm.faces.ensure_lookup_table()
         bm.verts.ensure_lookup_table()
 
-        verts = []
-        normals = []
+        indices = []
 
         if feature in self.vertex_features:
-            logger.debug("Analyzing vertex feature")
-            self._analyze_vertex_feature(bm, feature, verts, normals)
+            self._analyze_vertex_feature(bm, feature, indices)
         elif feature in self.edge_features:
-            logger.debug("Analyzing edge feature")
-            self._analyze_edge_feature(bm, feature, verts, normals)
+            self._analyze_edge_feature(bm, feature, indices)
         elif feature in self.face_features:
-            logger.debug("Analyzing face feature")
-            self._analyze_face_feature(bm, feature, verts, normals)
-
-        logger.debug(f"BMesh analysis complete")
-        logger.debug(f"Total BMesh elements:")
-        logger.debug(f"- Vertices: {len(bm.verts)}")
-        logger.debug(f"- Edges: {len(bm.edges)}")
-        logger.debug(f"- Faces: {len(bm.faces)}")
+            self._analyze_face_feature(bm, feature, indices)
 
         bm.free()
-        return (verts, normals)
+        return indices
 
     def _analyze_vertex_feature(
-        self, bm: bmesh.types.BMesh, feature: str, verts: List, normals: List
+        self, bm: bmesh.types.BMesh, feature: str, indices: List
     ):
-        logger.debug(f"[DEBUG] Analyzing vertex feature: {feature}")
-        world_matrix = self.obj.matrix_world
         for v in bm.verts:
             if feature == "single_vertices" and len(v.link_edges) == 0:
-                # logger.debug(f"[DEBUG] Found single vertex at {v.co}")
-                verts.append(world_matrix @ v.co.copy())
-                normals.append(
-                    (
-                        world_matrix.inverted().transposed().to_3x3() @ v.normal
-                    ).normalized()
-                )
+                indices.append(v.index)
             elif feature == "non_manifold_v_vertices" and not v.is_manifold:
-                verts.append(world_matrix @ v.co.copy())
-                normals.append(
-                    (
-                        world_matrix.inverted().transposed().to_3x3() @ v.normal
-                    ).normalized()
-                )
+                indices.append(v.index)
             elif feature == "n_pole_vertices" and len(v.link_edges) == 3:
-                verts.append(world_matrix @ v.co.copy())
-                normals.append(
-                    (
-                        world_matrix.inverted().transposed().to_3x3() @ v.normal
-                    ).normalized()
-                )
+                indices.append(v.index)
             elif feature == "e_pole_vertices" and len(v.link_edges) == 5:
-                verts.append(world_matrix @ v.co.copy())
-                normals.append(
-                    (
-                        world_matrix.inverted().transposed().to_3x3() @ v.normal
-                    ).normalized()
-                )
+                indices.append(v.index)
             elif feature == "high_pole_vertices" and len(v.link_edges) >= 6:
-                verts.append(world_matrix @ v.co.copy())
-                normals.append(
-                    (
-                        world_matrix.inverted().transposed().to_3x3() @ v.normal
-                    ).normalized()
-                )
+                indices.append(v.index)
 
-    def _analyze_edge_feature(
-        self, bm: bmesh.types.BMesh, feature: str, verts: List, normals: List
-    ):
-        logger.debug(f"[DEBUG] Analyzing edge feature: {feature}")
-        world_matrix = self.obj.matrix_world
+    def _analyze_edge_feature(self, bm: bmesh.types.BMesh, feature: str, indices: List):
         for e in bm.edges:
             if feature == "non_manifold_e_edges" and not e.is_manifold:
-                # logger.debug(f"[DEBUG] Found non-manifold edge")
-                verts.extend([world_matrix @ v.co.copy() for v in e.verts])
-                normals.extend(
-                    [
-                        (
-                            world_matrix.inverted().transposed().to_3x3() @ v.normal
-                        ).normalized()
-                        for v in e.verts
-                    ]
-                )
+                indices.append(e.index)  # Changed from extend to append
             elif feature == "sharp_edges" and e.smooth is False:
-                verts.extend([world_matrix @ v.co.copy() for v in e.verts])
-                normals.extend(
-                    [
-                        (
-                            world_matrix.inverted().transposed().to_3x3() @ v.normal
-                        ).normalized()
-                        for v in e.verts
-                    ]
-                )
+                indices.append(e.index)  # Changed from extend to append
             elif feature == "seam_edges" and e.seam:
-                verts.extend([world_matrix @ v.co.copy() for v in e.verts])
-                normals.extend(
-                    [
-                        (
-                            world_matrix.inverted().transposed().to_3x3() @ v.normal
-                        ).normalized()
-                        for v in e.verts
-                    ]
-                )
+                indices.append(e.index)  # Changed from extend to append
             elif feature == "boundary_edges" and e.is_boundary:
-                verts.extend([world_matrix @ v.co.copy() for v in e.verts])
-                normals.extend(
-                    [
-                        (
-                            world_matrix.inverted().transposed().to_3x3() @ v.normal
-                        ).normalized()
-                        for v in e.verts
-                    ]
-                )
+                indices.append(e.index)  # Changed from extend to append
 
-    def _analyze_face_feature(
-        self, bm: bmesh.types.BMesh, feature: str, verts: List, normals: List
-    ):
-        logger.debug(f"[DEBUG] Analyzing face feature: {feature}")
-        world_matrix = self.obj.matrix_world
+    def _analyze_face_feature(self, bm: bmesh.types.BMesh, feature: str, indices: List):
         for f in bm.faces:
             if feature == "tri_faces" and len(f.verts) == 3:
-                verts.extend([world_matrix @ v.co.copy() for v in f.verts])
-                normals.extend(
-                    [
-                        (
-                            world_matrix.inverted().transposed().to_3x3() @ v.normal
-                        ).normalized()
-                        for v in f.verts
-                    ]
-                )
+                indices.append(f.index)
             elif feature == "quad_faces" and len(f.verts) == 4:
-                face_verts = [world_matrix @ v.co.copy() for v in f.verts]
-                face_normals = [
-                    (
-                        world_matrix.inverted().transposed().to_3x3() @ v.normal
-                    ).normalized()
-                    for v in f.verts
-                ]
-                # First triangle (0,1,2)
-                verts.extend([face_verts[0], face_verts[1], face_verts[2]])
-                normals.extend([face_normals[0], face_normals[1], face_normals[2]])
-                # Second triangle (0,2,3)
-                verts.extend([face_verts[0], face_verts[2], face_verts[3]])
-                normals.extend([face_normals[0], face_normals[2], face_normals[3]])
+                indices.append(f.index)
             elif feature == "ngon_faces" and len(f.verts) > 4:
-                face_verts = [world_matrix @ v.co.copy() for v in f.verts]
-                face_normals = [
-                    (
-                        world_matrix.inverted().transposed().to_3x3() @ v.normal
-                    ).normalized()
-                    for v in f.verts
-                ]
-                # Create triangles: (0,i,i+1) for i in range(1, n-1)
-                for i in range(1, len(face_verts) - 1):
-                    verts.extend([face_verts[0], face_verts[i], face_verts[i + 1]])
-                    normals.extend(
-                        [face_normals[0], face_normals[i], face_normals[i + 1]]
-                    )
+                indices.append(f.index)
             elif feature == "non_planar_faces" and not self._is_planar(f):
-                face_verts = [world_matrix @ v.co.copy() for v in f.verts]
-                face_normals = [
-                    (
-                        world_matrix.inverted().transposed().to_3x3() @ v.normal
-                    ).normalized()
-                    for v in f.verts
-                ]
-                if len(face_verts) == 4:
-                    # First triangle (0,1,2)
-                    verts.extend([face_verts[0], face_verts[1], face_verts[2]])
-                    normals.extend([face_normals[0], face_normals[1], face_normals[2]])
-                    # Second triangle (0,2,3)
-                    verts.extend([face_verts[0], face_verts[2], face_verts[3]])
-                    normals.extend([face_normals[0], face_normals[2], face_normals[3]])
-                elif len(face_verts) > 4:
-                    for i in range(1, len(face_verts) - 1):
-                        verts.extend([face_verts[0], face_verts[i], face_verts[i + 1]])
-                        normals.extend(
-                            [face_normals[0], face_normals[i], face_normals[i + 1]]
-                        )
+                indices.append(f.index)
+            elif feature == "degenerate_faces" and self._is_degenerate(f):
+                indices.append(f.index)
 
-    def _is_planar(self, face: bmesh.types.BMFace, threshold: float = 0.0) -> bool:
+    def _is_planar(self, face: bmesh.types.BMFace) -> bool:
         if len(face.verts) <= 3:
-            # logger.debug("[DEBUG] Face is triangle or less - automatically planar")
             return True
 
-        normal = face.normal
+        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+        # Convert degrees to radians for math operations
+        threshold_rad = math.radians(props.non_planar_threshold)
+
+        normal = face.normal.normalized()
         center = face.calc_center_median()
 
+        # Get the average edge vector as reference
+        ref_edge = (face.verts[1].co - face.verts[0].co).normalized()
+
+        # Check each vertex's plane formed with adjacent vertices
         for v in face.verts:
-            d = abs(normal.dot(v.co - center))
-            if d > threshold:
-                # logger.debug(f"[DEBUG] Non-planar face detected - deviation: {d}")
+            # Get vectors to adjacent vertices
+            v_pos = v.co - center
+            if v_pos.length < 1e-6:  # Skip if vertex is at center
+                continue
+
+            # Calculate angle between vertex normal and face normal
+            angle = math.acos(min(1.0, max(-1.0, normal.dot(v_pos.normalized()))))
+            if abs(angle - math.pi / 2) > threshold_rad:
                 return False
+
         return True
 
+    def _is_degenerate(self, face: bmesh.types.BMFace) -> bool:
+        # Check for zero area
+        if face.calc_area() < 1e-8:
+            return True
+
+        # Check for invalid vertex count
+        verts = face.verts
+        if len(verts) < 3:
+            return True
+
+        # Check for duplicate vertices
+        unique_verts = set(vert.co.to_tuple() for vert in verts)
+        if len(unique_verts) < len(verts):
+            return True
+
+        # TODO
+        # Disabled check, as a planar ngon of non zero area is not degenerate
+
+        # Check all consecutive vertices for collinearity
+        # for i in range(len(verts)):
+        #     v1 = verts[i].co
+        #     v2 = verts[(i + 1) % len(verts)].co
+        #     v3 = verts[(i + 2) % len(verts)].co
+
+        #     # Get vectors between consecutive vertices
+        #     edge1 = (v2 - v1).normalized()
+        #     edge2 = (v3 - v2).normalized()
+
+        #     Check if vectors are parallel (collinear)
+        #     cross_prod = edge1.cross(edge2)
+        #     if cross_prod.length < 1e-6:
+        #         return True
+
+        return False
+
     @classmethod
-    def invalidate_cache(cls, obj_name: str = None):
-        cls._cache.invalidate(obj_name)
+    def invalidate_cache(cls, obj_name: str, features: List[str] = None):
+        """
+        Invalidate cache for specific object and features
+        If features is None, invalidates all features
+        """
+        # Clear the analyzed_features when invalidating cache
+        for analyzer in cls._analyzer_cache:
+            if analyzer.obj.name == obj_name:
+                analyzer.analyzed_features.clear()
+                break
+
+        if features:
+            for feature in features:
+                cls._cache.invalidate(obj_name, feature)
+        else:
+            cls._cache.invalidate(obj_name)

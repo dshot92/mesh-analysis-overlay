@@ -23,17 +23,13 @@ if not logger.handlers:
     logger.addHandler(handler)
 
 
-_GLOBAL_ANALYZER_CACHE = []
-_GLOBAL_CACHE_SIZE = 5
-
-
-
-
 class GPUDrawer:
     def __init__(self):
         logger.debug("=== GPUDrawer Initialization ===")
         self.shader = gpu.shader.from_builtin("FLAT_COLOR")
         self.batches = {}
+        self.next_batches = {}
+        self.pending_updates = {}  # Store vertex/color data before creating batch
         self.is_running = False
         self._handle = None
         self._current_analyzer = None
@@ -43,64 +39,106 @@ class GPUDrawer:
         logger.debug(f"- Current analyzer: {self._current_analyzer}")
 
     def _get_analyzer(self, obj: Object) -> MeshAnalyzer:
-        # Check if object already has an analyzer in cache
-        for analyzer in _GLOBAL_ANALYZER_CACHE:
-            if analyzer.obj == obj:
-                logger.debug(f"✓ Cache hit for {obj.name}")
-                self._current_analyzer = analyzer
-                return analyzer
-
-        logger.debug(f"× Cache miss for {obj.name}")
-        # Create new analyzer
-        self._current_analyzer = MeshAnalyzer(obj)
-
-        # Add to cache, removing oldest if at capacity
-        if len(_GLOBAL_ANALYZER_CACHE) >= _GLOBAL_CACHE_SIZE:
-            _GLOBAL_ANALYZER_CACHE.pop(0)
-
-        # Add new analyzer to end of list
-        _GLOBAL_ANALYZER_CACHE.append(self._current_analyzer)
+        self._current_analyzer = MeshAnalyzer.get_analyzer(obj)
         return self._current_analyzer
 
     def update_feature_batch(
         self,
         feature: str,
-        verts: List[Vector],
-        normals: List[Vector],
+        indices: List[int],
         color: Tuple[float, float, float, float],
         primitive_type: str,
     ):
-        if not verts:
+        if not indices:
             return
 
+        obj = self._current_analyzer.obj
+        mesh = obj.data
+        world_matrix = obj.matrix_world
+        world_normal_matrix = world_matrix.inverted().transposed().to_3x3()
+
+        # Calculate vertex positions and normals
+        verts = []
+        normals = []
+
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
-        offset = props.overlay_offset if hasattr(props, "overlay_offset") else 0.0
+        offset = props.overlay_offset
 
-        offset_verts = []
-        for v, n in zip(verts, normals):
-            normal = n.normalized()
-            offset_pos = v + (normal * offset)
-            offset_verts.append(offset_pos)
+        def process_vertex(v_idx):
+            v = mesh.vertices[v_idx]
+            pos = world_matrix @ v.co
+            normal = (world_normal_matrix @ v.normal).normalized()
+            offset_pos = pos + (normal * offset)
+            verts.append(offset_pos)
+            normals.append(normal)
 
-        # Create color array matching vertex count
-        colors = [color] * len(offset_verts)
+        if primitive_type == "POINTS":
+            # Handle vertices
+            for idx in indices:
+                process_vertex(idx)
 
-        try:
-            batch = batch_for_shader(
-                self.shader,
-                primitive_type,
-                {
-                    "pos": offset_verts,
-                    "color": colors,
-                },
-            )
-            self.batches[feature] = {"batch": batch, "color": color}
-        except Exception as e:
-            logger.debug(f"[ERROR] Failed to create batch: {str(e)}")
+        elif primitive_type == "LINES":
+            # Handle edges
+            for idx in indices:
+                e = mesh.edges[idx]
+                for v_idx in e.vertices:
+                    process_vertex(v_idx)
+
+        elif primitive_type == "TRIS":
+            # Handle faces
+            for idx in indices:
+                f = mesh.polygons[idx]
+                verts_count = len(f.vertices)
+
+                if verts_count == 3:
+                    # Regular triangle
+                    for v_idx in f.vertices:
+                        process_vertex(v_idx)
+                else:
+                    # Fan triangulation for quads and n-gons
+                    v0 = f.vertices[0]  # First vertex is the fan center
+                    for i in range(1, verts_count - 1):
+                        # Create triangle: v0, vi, vi+1
+                        process_vertex(v0)
+                        process_vertex(f.vertices[i])
+                        process_vertex(f.vertices[i + 1])
+
+        # Append to pending updates
+        if feature not in self.pending_updates:
+            self.pending_updates[feature] = {
+                "verts": [],
+                "colors": [],
+                "primitive_type": primitive_type,
+            }
+
+        self.pending_updates[feature]["verts"].extend(verts)
+        self.pending_updates[feature]["colors"].extend([color] * len(verts))
 
     def draw(self):
         if not self.is_running:
             return
+
+        # Create batches from pending updates
+        for feature, data in self.pending_updates.items():
+            try:
+                batch = batch_for_shader(
+                    self.shader,
+                    data["primitive_type"],
+                    {
+                        "pos": data["verts"],
+                        "color": data["colors"],
+                    },
+                )
+                self.next_batches[feature] = {"batch": batch}
+            except Exception as e:
+                logger.debug(f"[ERROR] Failed to create batch: {str(e)}")
+
+        self.pending_updates.clear()
+
+        # Swap buffers if we have pending updates
+        if self.next_batches:
+            self.batches = self.next_batches
+            self.next_batches = {}
 
         obj = bpy.context.active_object
         if not obj or obj.type != "MESH":
@@ -158,15 +196,13 @@ class GPUDrawer:
 
     def _update_feature_set(self, feature_set, primitive_type, props, analyzer):
         for feature in feature_set:
-            if not getattr(props, f"show_{feature}", False):
+            if not getattr(props, f"{feature}_enabled", False):
                 continue
 
-            verts, normals = analyzer.analyze_feature(feature)
-            if verts:
+            indices = analyzer.analyze_feature(feature)
+            if indices:
                 color = tuple(getattr(props, f"{feature}_color"))
-                self.update_feature_batch(
-                    feature, verts, normals, color, primitive_type
-                )
+                self.update_feature_batch(feature, indices, color, primitive_type)
 
     def _handle_mode_change(self, obj):
         if not obj or not self.is_running:
@@ -218,56 +254,58 @@ class GPUDrawer:
         self.batches.clear()
         self._current_analyzer = None
         MeshAnalyzer._cache.clear()
+        MeshAnalyzer.clear_analyzer_cache()
         logger.debug("Cleanup complete")
 
-    def update_batches(self, obj):
+    def update_batches(self, obj, features=None):
         logger.debug("\n=== Update Batches ===")
         logger.debug(f"Object: {obj.name if obj else 'None'}")
-        logger.debug(f"Is running: {self.is_running}")
+        logger.debug(f"Updating features: {features if features else 'all'}")
 
         if not obj or not self.is_running:
             logger.debug("× Skipping update - invalid state")
             return
 
-        logger.debug("Getting analyzer...")
         analyzer = self._get_analyzer(obj)
-        logger.debug(f"Current batch count: {len(self.batches)}")
-        logger.debug("Clearing batches...")
-        self.batches.clear()
-
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
 
+        if features:
+            # Clear only specified features
+            for feature in features:
+                if feature in self.batches:
+                    del self.batches[feature]
+                if feature in self.next_batches:
+                    del self.next_batches[feature]
+        else:
+            # Clear all batches for full update
+            self.batches.clear()
+            self.next_batches.clear()
+            features = (
+                list(analyzer.face_features)
+                + list(analyzer.edge_features)
+                + list(analyzer.vertex_features)
+            )
+
         # Update face overlays
-        logger.debug("\nProcessing face features:")
         for feature in analyzer.face_features:
-            if getattr(props, f"show_{feature}", False):
-                logger.debug(f"- Analyzing {feature}")
-                verts, normals = analyzer.analyze_feature(feature)
-                if verts:
-                    logger.debug(f"  ✓ Found {len(verts)} vertices")
+            if feature in features and getattr(props, f"{feature}_enabled", False):
+                indices = analyzer.analyze_feature(feature)
+                if indices:
                     color = tuple(getattr(props, f"{feature}_color"))
-                    self.update_feature_batch(feature, verts, normals, color, "TRIS")
+                    self.update_feature_batch(feature, indices, color, "TRIS")
 
         # Update edge overlays
-        logger.debug("\nProcessing edge features:")
         for feature in analyzer.edge_features:
-            if getattr(props, f"show_{feature}", False):
-                logger.debug(f"- Analyzing {feature}")
-                verts, normals = analyzer.analyze_feature(feature)
-                if verts:
-                    logger.debug(f"  ✓ Found {len(verts)} vertices")
+            if feature in features and getattr(props, f"{feature}_enabled", False):
+                indices = analyzer.analyze_feature(feature)
+                if indices:
                     color = tuple(getattr(props, f"{feature}_color"))
-                    self.update_feature_batch(feature, verts, normals, color, "LINES")
+                    self.update_feature_batch(feature, indices, color, "LINES")
 
         # Update vertex overlays
-        logger.debug("\nProcessing vertex features:")
         for feature in analyzer.vertex_features:
-            if getattr(props, f"show_{feature}", False):
-                logger.debug(f"- Analyzing {feature}")
-                verts, normals = analyzer.analyze_feature(feature)
-                if verts:
-                    logger.debug(f"  ✓ Found {len(verts)} vertices")
+            if feature in features and getattr(props, f"{feature}_enabled", False):
+                indices = analyzer.analyze_feature(feature)
+                if indices:
                     color = tuple(getattr(props, f"{feature}_color"))
-                    self.update_feature_batch(feature, verts, normals, color, "POINTS")
-
-        logger.debug(f"\nFinal batch count: {len(self.batches)}")
+                    self.update_feature_batch(feature, indices, color, "POINTS")
