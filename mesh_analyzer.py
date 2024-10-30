@@ -249,23 +249,23 @@ class MeshAnalyzer:
         if len(unique_verts) < len(verts):
             return True
 
+        # TODO
+        # Disabled check, as a planar ngon of non zero area is not degenerate
+
         # Check all consecutive vertices for collinearity
-        for i in range(len(verts)):
-            v1 = verts[i].co
-            v2 = verts[(i + 1) % len(verts)].co
-            v3 = verts[(i + 2) % len(verts)].co
+        # for i in range(len(verts)):
+        #     v1 = verts[i].co
+        #     v2 = verts[(i + 1) % len(verts)].co
+        #     v3 = verts[(i + 2) % len(verts)].co
 
-            # Get vectors between consecutive vertices
-            edge1 = (v2 - v1).normalized()
-            edge2 = (v3 - v2).normalized()
+        #     # Get vectors between consecutive vertices
+        #     edge1 = (v2 - v1).normalized()
+        #     edge2 = (v3 - v2).normalized()
 
-            # Disabled check, as a planar ngon of non zero
-            # area is not degenerate
-
-            # Check if vectors are parallel (collinear)
-            # cross_prod = edge1.cross(edge2)
-            # if cross_prod.length < 1e-6:
-            #     return True
+        #     Check if vectors are parallel (collinear)
+        #     cross_prod = edge1.cross(edge2)
+        #     if cross_prod.length < 1e-6:
+        #         return True
 
         return False
 
