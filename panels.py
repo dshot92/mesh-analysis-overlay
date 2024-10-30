@@ -227,31 +227,54 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
                     if active_faces:
                         col = box.column(align=True)
                         col.label(text="Faces:")
-                        for feature in active_faces:
-                            count = len(analyzer.analyze_feature(feature))
-                            row = col.row()
-                            row.label(text=feature.replace("_", " ").title())
-                            row.label(text=str(count))
+                        face_order = [
+                            "tri_faces",
+                            "quad_faces",
+                            "ngon_faces",
+                            "non_planar_faces",
+                            "degenerate_faces",
+                        ]
+                        for feature in face_order:
+                            if feature in active_faces:
+                                count = len(analyzer.analyze_feature(feature))
+                                row = col.row()
+                                row.label(text=feature.replace("_", " ").title())
+                                row.label(text=str(count))
 
                     # Edges stats
                     if active_edges:
                         col = box.column(align=True)
                         col.label(text="Edges:")
-                        for feature in active_edges:
-                            count = len(analyzer.analyze_feature(feature))
-                            row = col.row()
-                            row.label(text=feature.replace("_", " ").title())
-                            row.label(text=str(count))
+                        edge_order = [
+                            "non_manifold_e_edges",
+                            "sharp_edges",
+                            "seam_edges",
+                            "boundary_edges",
+                        ]
+                        for feature in edge_order:
+                            if feature in active_edges:
+                                count = len(analyzer.analyze_feature(feature))
+                                row = col.row()
+                                row.label(text=feature.replace("_", " ").title())
+                                row.label(text=str(count))
 
                     # Vertices stats
                     if active_vertices:
                         col = box.column(align=True)
                         col.label(text="Vertices:")
-                        for feature in active_vertices:
-                            count = len(analyzer.analyze_feature(feature))
-                            row = col.row()
-                            row.label(text=feature.replace("_", " ").title())
-                            row.label(text=str(count))
+                        vertex_order = [
+                            "single_vertices",
+                            "non_manifold_v_vertices",
+                            "n_pole_vertices",
+                            "e_pole_vertices",
+                            "high_pole_vertices",
+                        ]
+                        for feature in vertex_order:
+                            if feature in active_vertices:
+                                count = len(analyzer.analyze_feature(feature))
+                                row = col.row()
+                                row.label(text=feature.replace("_", " ").title())
+                                row.label(text=str(count))
             else:
                 panel.label(text="Enable overlay to see statistics")
 
