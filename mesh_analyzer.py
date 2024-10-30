@@ -3,6 +3,7 @@
 import bpy
 import bmesh
 import logging
+import math
 
 from typing import Tuple, List
 from bpy.types import Object
@@ -202,19 +203,32 @@ class MeshAnalyzer:
             elif feature == "non_planar_faces" and not self._is_planar(f):
                 indices.append(f.index)
 
-    def _is_planar(self, face: bmesh.types.BMFace, threshold: float = 0.0) -> bool:
+    def _is_planar(self, face: bmesh.types.BMFace) -> bool:
         if len(face.verts) <= 3:
-            # logger.debug("[DEBUG] Face is triangle or less - automatically planar")
             return True
 
-        normal = face.normal
+        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+        # Convert degrees to radians for math operations
+        threshold_rad = math.radians(props.non_planar_threshold)
+
+        normal = face.normal.normalized()
         center = face.calc_center_median()
 
+        # Get the average edge vector as reference
+        ref_edge = (face.verts[1].co - face.verts[0].co).normalized()
+
+        # Check each vertex's plane formed with adjacent vertices
         for v in face.verts:
-            d = abs(normal.dot(v.co - center))
-            if d > threshold:
-                # logger.debug(f"[DEBUG] Non-planar face detected - deviation: {d}")
+            # Get vectors to adjacent vertices
+            v_pos = v.co - center
+            if v_pos.length < 1e-6:  # Skip if vertex is at center
+                continue
+
+            # Calculate angle between vertex normal and face normal
+            angle = math.acos(min(1.0, max(-1.0, normal.dot(v_pos.normalized()))))
+            if abs(angle - math.pi / 2) > threshold_rad:
                 return False
+
         return True
 
     @classmethod

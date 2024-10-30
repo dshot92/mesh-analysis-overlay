@@ -254,6 +254,7 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             panel.prop(props, "overlay_offset", text="Overlay Offset")
             panel.prop(props, "overlay_edge_width", text="Overlay Edge Width")
             panel.prop(props, "overlay_vertex_radius", text="Overlay Vertex Radius")
+            panel.prop(props, "non_planar_threshold", text="Non-Planar Threshold")
 
 
 classes = (Mesh_Analysis_Overlay_Panel,)

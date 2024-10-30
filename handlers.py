@@ -41,7 +41,9 @@ def mesh_analysis_depsgraph_update(scene, depsgraph):
                 logger.debug(f"Invalidating cache for {obj.name}: {active_features}")
                 MeshAnalyzer.invalidate_cache(obj.name, features=active_features)
                 if drawer and drawer.is_running:
-                    logger.debug(f"Updating drawer batches for features: {active_features}")
+                    logger.debug(
+                        f"Updating drawer batches for features: {active_features}"
+                    )
                     drawer.update_batches(obj, features=active_features)
 
 
@@ -69,6 +71,26 @@ def offset_update(self, context):
         obj = context.active_object
         if obj and obj.type == "MESH":
             drawer.update_batches(obj)
+
+
+def non_planar_threshold_update(self, context):
+    """Specific handler for non-planar threshold updates"""
+    logger.debug("\n=== Non-Planar Threshold Update Handler ===")
+    if context and context.active_object:
+        obj = context.active_object
+        if obj and obj.type == "MESH":
+            # Force full cache invalidation for non-planar faces
+            MeshAnalyzer.invalidate_cache(obj.name)
+
+            # Clear and rebuild the batch completely
+            if drawer and drawer.is_running:
+                drawer.batches.clear()
+                drawer.update_batches(obj)
+
+            # Force viewport update
+            for area in context.screen.areas:
+                if area.type == "VIEW_3D":
+                    area.tag_redraw()
 
 
 def register():

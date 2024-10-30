@@ -228,6 +228,16 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=10.0,
     )
 
+    non_planar_threshold: FloatProperty(
+        name="Non-Planar Threshold",
+        description="Maximum angle deviation (in degrees) from face plane before considering it non-planar",
+        default=0.0,
+        min=0.0001,
+        max=90.0,
+        precision=4,
+        update=handlers.non_planar_threshold_update,
+    )
+
 
 classes = (Mesh_Analysis_Overlay_Props,)
 
