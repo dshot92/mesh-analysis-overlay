@@ -13,7 +13,7 @@ from .mesh_analyzer import MeshAnalyzer
 
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 logger.propagate = False
 
 if not logger.handlers:
