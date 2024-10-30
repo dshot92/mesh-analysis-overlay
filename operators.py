@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import bpy
+import bmesh
 
 from .gpu_drawer import GPUDrawer
+from .mesh_analyzer import MeshAnalyzer
 
 
 drawer = GPUDrawer()
@@ -27,7 +29,71 @@ class Mesh_Analysis_Overlay(bpy.types.Operator):
         return {"FINISHED"}
 
 
-classes = (Mesh_Analysis_Overlay,)
+class Select_Feature_Elements(bpy.types.Operator):
+    bl_idname = "view3d.select_feature_elements"
+    bl_label = "Select Feature Elements"
+    bl_description = "Select mesh elements of this specific feature type"
+    bl_options = {"REGISTER", "UNDO"}
+
+    feature: bpy.props.StringProperty()
+    mode: bpy.props.EnumProperty(
+        items=[
+            ("SET", "Set", "Set selection"),
+            ("ADD", "Add", "Add to selection"),
+            ("SUB", "Subtract", "Subtract from selection"),
+        ],
+        default="SET",
+    )
+
+    def invoke(self, context, event):
+        if event.shift:
+            self.mode = "ADD"
+        elif event.ctrl:
+            self.mode = "SUB"
+        else:
+            self.mode = "SET"
+        return self.execute(context)
+
+    def execute(self, context):
+        obj = context.active_object
+        if not obj or obj.type != "MESH":
+            self.report({"WARNING"}, "No active mesh object")
+            return {"CANCELLED"}
+
+        if obj.mode != "EDIT":
+            bpy.ops.object.mode_set(mode="EDIT")
+
+        if self.mode == "SET":
+            bpy.ops.mesh.select_all(action="DESELECT")
+
+        mesh = obj.data
+        bm = bmesh.from_edit_mesh(mesh)
+        bm.faces.ensure_lookup_table()
+        bm.edges.ensure_lookup_table()
+        bm.verts.ensure_lookup_table()
+
+        analyzer = MeshAnalyzer.get_analyzer(obj)
+        indices = analyzer.analyze_feature(self.feature)
+
+        # Determine element type from feature name
+        if self.feature in analyzer.face_features:
+            for idx in indices:
+                bm.faces[idx].select = self.mode != "SUB"
+        elif self.feature in analyzer.edge_features:
+            for idx in indices:
+                bm.edges[idx].select = self.mode != "SUB"
+        elif self.feature in analyzer.vertex_features:
+            for idx in indices:
+                bm.verts[idx].select = self.mode != "SUB"
+
+        bmesh.update_edit_mesh(mesh)
+        return {"FINISHED"}
+
+
+classes = (
+    Mesh_Analysis_Overlay,
+    Select_Feature_Elements,
+)
 
 
 def register():

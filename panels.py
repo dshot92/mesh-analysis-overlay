@@ -25,6 +25,8 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             icon="OVERLAY",
             depress=drawer.is_running,
         )
+
+        # Info text
         ROW_SCALE = 0.5
         ALIGNMENT = "LEFT"
         row = layout.row()
@@ -53,24 +55,36 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             split = row.split(factor=factor)
             split.prop(props, "show_tri_faces", text="Triangles")
             split.prop(props, "tri_faces_color", text="")
+            split.operator(
+                "view3d.select_feature_elements", text="", icon="RESTRICT_SELECT_OFF"
+            ).feature = "tri_faces"
 
             # Quads row
             row = panel.row(align=True)
             split = row.split(factor=factor)
             split.prop(props, "show_quad_faces", text="Quads")
             split.prop(props, "quad_faces_color", text="")
+            split.operator(
+                "view3d.select_feature_elements", text="", icon="RESTRICT_SELECT_OFF"
+            ).feature = "quad_faces"
 
             # N-gons row
             row = panel.row(align=True)
             split = row.split(factor=factor)
             split.prop(props, "show_ngon_faces", text="N-Gons")
             split.prop(props, "ngon_faces_color", text="")
+            split.operator(
+                "view3d.select_feature_elements", text="", icon="RESTRICT_SELECT_OFF"
+            ).feature = "ngon_faces"
 
             # Non-planar faces row
             row = panel.row(align=True)
             split = row.split(factor=factor)
             split.prop(props, "show_non_planar_faces", text="Non-Planar Faces")
             split.prop(props, "non_planar_faces_color", text="")
+            split.operator(
+                "view3d.select_feature_elements", text="", icon="RESTRICT_SELECT_OFF"
+            ).feature = "non_planar_faces"
 
         # Edges panel
         header, panel = layout.panel("edges_panel", default_closed=False)
@@ -81,24 +95,36 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             split = row.split(factor=factor)
             split.prop(props, "show_non_manifold_e_edges", text="Non-Manifold Edges")
             split.prop(props, "non_manifold_e_edges_color", text="")
+            split.operator(
+                "view3d.select_feature_elements", text="", icon="RESTRICT_SELECT_OFF"
+            ).feature = "non_manifold_e_edges"
 
             # Sharp edges row
             row = panel.row(align=True)
             split = row.split(factor=factor)
             split.prop(props, "show_sharp_edges", text="Sharp Edges")
             split.prop(props, "sharp_edges_color", text="")
+            split.operator(
+                "view3d.select_feature_elements", text="", icon="RESTRICT_SELECT_OFF"
+            ).feature = "sharp_edges"
 
             # Seam edges row
             row = panel.row(align=True)
             split = row.split(factor=factor)
             split.prop(props, "show_seam_edges", text="Seam Edges")
             split.prop(props, "seam_edges_color", text="")
+            split.operator(
+                "view3d.select_feature_elements", text="", icon="RESTRICT_SELECT_OFF"
+            ).feature = "seam_edges"
 
-            # Boundary edges row
+            # Boundary edges
             row = panel.row(align=True)
             split = row.split(factor=factor)
             split.prop(props, "show_boundary_edges", text="Boundary Edges")
             split.prop(props, "boundary_edges_color", text="")
+            split.operator(
+                "view3d.select_feature_elements", text="", icon="RESTRICT_SELECT_OFF"
+            ).feature = "boundary_edges"
 
         # Vertices panel
         header, panel = layout.panel("vertices_panel", default_closed=False)
@@ -109,6 +135,9 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             split = row.split(factor=factor)
             split.prop(props, "show_single_vertices", text="Single Vertices")
             split.prop(props, "single_vertices_color", text="")
+            split.operator(
+                "view3d.select_feature_elements", text="", icon="RESTRICT_SELECT_OFF"
+            ).feature = "single_vertices"
 
             # Non-manifold vertices row
             row = panel.row(align=True)
@@ -117,24 +146,36 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
                 props, "show_non_manifold_v_vertices", text="Non-Manifold Vertices"
             )
             split.prop(props, "non_manifold_v_vertices_color", text="")
+            split.operator(
+                "view3d.select_feature_elements", text="", icon="RESTRICT_SELECT_OFF"
+            ).feature = "non_manifold_v_vertices"
 
             # N-poles row
             row = panel.row(align=True)
             split = row.split(factor=factor)
             split.prop(props, "show_n_pole_vertices", text="N-Poles (3)")
             split.prop(props, "n_pole_vertices_color", text="")
+            split.operator(
+                "view3d.select_feature_elements", text="", icon="RESTRICT_SELECT_OFF"
+            ).feature = "n_pole_vertices"
 
             # E-poles row
             row = panel.row(align=True)
             split = row.split(factor=factor)
             split.prop(props, "show_e_pole_vertices", text="E-Poles (5)")
             split.prop(props, "e_pole_vertices_color", text="")
+            split.operator(
+                "view3d.select_feature_elements", text="", icon="RESTRICT_SELECT_OFF"
+            ).feature = "e_pole_vertices"
 
             # High-poles row
             row = panel.row(align=True)
             split = row.split(factor=factor)
             split.prop(props, "show_high_pole_vertices", text="High-Poles (6+)")
             split.prop(props, "high_pole_vertices_color", text="")
+            split.operator(
+                "view3d.select_feature_elements", text="", icon="RESTRICT_SELECT_OFF"
+            ).feature = "high_pole_vertices"
 
         # Offset settings
         header, panel = layout.panel("panel_settings", default_closed=True)
