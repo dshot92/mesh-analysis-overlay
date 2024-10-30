@@ -3,6 +3,7 @@
 import bpy
 
 from .operators import drawer
+from .mesh_analyzer import MeshAnalyzer
 
 
 class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
@@ -176,6 +177,74 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             split.operator(
                 "view3d.select_feature_elements", text="", icon="RESTRICT_SELECT_OFF"
             ).feature = "high_pole_vertices"
+
+        # Statistics panel
+        header, panel = layout.panel("statistics_panel", default_closed=False)
+        header.label(text="Statistics")
+
+        if panel:
+            if (
+                drawer.is_running
+                and context.active_object
+                and context.active_object.type == "MESH"
+            ):
+                analyzer = MeshAnalyzer.get_analyzer(context.active_object)
+
+                # Check if any overlay is enabled
+                active_faces = [
+                    f
+                    for f in analyzer.face_features
+                    if getattr(props, f"show_{f}", False)
+                ]
+                active_edges = [
+                    f
+                    for f in analyzer.edge_features
+                    if getattr(props, f"show_{f}", False)
+                ]
+                active_vertices = [
+                    f
+                    for f in analyzer.vertex_features
+                    if getattr(props, f"show_{f}", False)
+                ]
+
+                if not any([active_faces, active_edges, active_vertices]):
+                    box = panel.box()
+                    box.label(text="No overlay enabled")
+                else:
+                    # Create a single box for all statistics
+                    box = panel.box()
+
+                    # Faces stats
+                    if active_faces:
+                        col = box.column(align=True)
+                        col.label(text="Faces:")
+                        for feature in active_faces:
+                            count = len(analyzer.analyze_feature(feature))
+                            row = col.row()
+                            row.label(text=feature.replace("_", " ").title())
+                            row.label(text=str(count))
+
+                    # Edges stats
+                    if active_edges:
+                        col = box.column(align=True)
+                        col.label(text="Edges:")
+                        for feature in active_edges:
+                            count = len(analyzer.analyze_feature(feature))
+                            row = col.row()
+                            row.label(text=feature.replace("_", " ").title())
+                            row.label(text=str(count))
+
+                    # Vertices stats
+                    if active_vertices:
+                        col = box.column(align=True)
+                        col.label(text="Vertices:")
+                        for feature in active_vertices:
+                            count = len(analyzer.analyze_feature(feature))
+                            row = col.row()
+                            row.label(text=feature.replace("_", " ").title())
+                            row.label(text=str(count))
+            else:
+                panel.label(text="Enable overlay to see statistics")
 
         # Offset settings
         header, panel = layout.panel("panel_settings", default_closed=True)
