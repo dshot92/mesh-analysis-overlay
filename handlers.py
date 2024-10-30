@@ -3,7 +3,7 @@ import logging
 
 from bpy.app.handlers import persistent
 from .mesh_analyzer import MeshAnalyzer
-from .gpu_drawer import drawer
+from .operators import drawer
 
 logger = logging.getLogger(__name__)
 # logger.setLevel(logging.DEBUG)

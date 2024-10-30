@@ -23,9 +23,10 @@ if not logger.handlers:
     logger.addHandler(handler)
 
 
-# Add at the top level, before the GPUDrawer class
 _GLOBAL_ANALYZER_CACHE = []
 _GLOBAL_CACHE_SIZE = 5
+
+
 
 
 class GPUDrawer:
@@ -42,7 +43,6 @@ class GPUDrawer:
         logger.debug(f"- Current analyzer: {self._current_analyzer}")
 
     def _get_analyzer(self, obj: Object) -> MeshAnalyzer:
-        """Get or create MeshAnalyzer instance for object"""
         # Check if object already has an analyzer in cache
         for analyzer in _GLOBAL_ANALYZER_CACHE:
             if analyzer.obj == obj:
@@ -56,7 +56,7 @@ class GPUDrawer:
 
         # Add to cache, removing oldest if at capacity
         if len(_GLOBAL_ANALYZER_CACHE) >= _GLOBAL_CACHE_SIZE:
-            _GLOBAL_ANALYZER_CACHE.pop(0)  # Remove oldest
+            _GLOBAL_ANALYZER_CACHE.pop(0)
 
         # Add new analyzer to end of list
         _GLOBAL_ANALYZER_CACHE.append(self._current_analyzer)
@@ -91,7 +91,7 @@ class GPUDrawer:
                 primitive_type,
                 {
                     "pos": offset_verts,
-                    "color": colors,  # FLAT_COLOR shader requires per-vertex colors
+                    "color": colors,
                 },
             )
             self.batches[feature] = {"batch": batch, "color": color}
@@ -140,12 +140,11 @@ class GPUDrawer:
         gpu.state.face_culling_set("NONE")
 
     def _update_all_batches(self, obj):
-        """Update all batches based on current object state"""
         if not obj or not self.is_running:
             return
 
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
-        analyzer = self._get_analyzer(obj)  # This is correct - using cached analyzer
+        analyzer = self._get_analyzer(obj)
         self.batches.clear()
 
         feature_configs = [
@@ -170,7 +169,6 @@ class GPUDrawer:
                 )
 
     def _handle_mode_change(self, obj):
-        """Handle object mode changes"""
         if not obj or not self.is_running:
             return False
 
@@ -273,8 +271,3 @@ class GPUDrawer:
                     self.update_feature_batch(feature, verts, normals, color, "POINTS")
 
         logger.debug(f"\nFinal batch count: {len(self.batches)}")
-
-
-# Create and export the drawer instance
-drawer = GPUDrawer()
-__all__ = ["drawer", "GPUDrawer"]

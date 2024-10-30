@@ -2,7 +2,10 @@
 
 import bpy
 
-from .gpu_drawer import drawer
+from .gpu_drawer import GPUDrawer
+
+
+drawer = GPUDrawer()
 
 
 class Mesh_Analysis_Overlay(bpy.types.Operator):
