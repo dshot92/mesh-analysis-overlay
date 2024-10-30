@@ -19,6 +19,10 @@ if not logger.handlers:
 # Used as a callback for depsgraph updates
 @persistent
 def mesh_analysis_depsgraph_update(scene, depsgraph):
+    # Skip if in edit mode
+    if bpy.context.mode == "EDIT_MESH":
+        return
+
     logger.debug("\n=== Depsgraph Update Handler ===")
     for update in depsgraph.updates:
         if isinstance(update.id, bpy.types.Object):
@@ -27,11 +31,18 @@ def mesh_analysis_depsgraph_update(scene, depsgraph):
             logger.debug(f"Geometry updated: {update.is_updated_geometry}")
 
             if obj.type == "MESH" and update.is_updated_geometry:
-                logger.debug(f"Invalidating cache for: {obj.name}")
-                MeshAnalyzer.invalidate_cache(obj.name)
+                scene_props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+                active_features = [
+                    key
+                    for key, value in scene_props.items()
+                    if key.startswith("show_") and value
+                ]
+
+                logger.debug(f"Invalidating cache for {obj.name}: {active_features}")
+                MeshAnalyzer.invalidate_cache(obj.name, features=active_features)
                 if drawer and drawer.is_running:
-                    logger.debug("Updating drawer batches")
-                    drawer.update_batches(obj)
+                    logger.debug(f"Updating drawer batches for features: {active_features}")
+                    drawer.update_batches(obj, features=active_features)
 
 
 # Used as a callback for property updates in properties.py
