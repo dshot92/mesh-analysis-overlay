@@ -25,7 +25,7 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             icon="OVERLAY",
             depress=drawer.is_running,
         )
-        ROW_SCALE = 0.5
+        ROW_SCALE = 0.35
         ALIGNMENT = "LEFT"
         row = layout.row()
         row.scale_y = ROW_SCALE
@@ -34,11 +34,11 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         row = layout.row()
         row.scale_y = ROW_SCALE
         row.alignment = ALIGNMENT
-        row.label(text="Refresh:")
+        row.label(text="Refresh by:")
         row = layout.row()
         row.scale_y = ROW_SCALE
         row.alignment = ALIGNMENT
-        row.label(text="• Toggling it off/on")
+        row.label(text="• Toggling Overlay off/on")
         row = layout.row()
         row.scale_y = ROW_SCALE
         row.alignment = ALIGNMENT
