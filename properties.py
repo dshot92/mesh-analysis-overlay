@@ -68,6 +68,21 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=1.0,
     )
 
+    show_degenerate_faces: BoolProperty(
+        name="Show Degenerate Faces",
+        description="Show faces with zero area or invalid geometry",
+        default=False,
+        update=handlers.property_update,
+    )
+    degenerate_faces_color: FloatVectorProperty(
+        name="Degenerate Faces Color",
+        subtype="COLOR",
+        default=(1.0, 0.0, 0.5, 0.5),
+        size=4,
+        min=0.0,
+        max=1.0,
+    )
+
     # EDGES
     show_non_manifold_e_edges: BoolProperty(
         name="Show Non-Manifold Edges",

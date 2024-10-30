@@ -87,6 +87,15 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
                 "view3d.select_feature_elements", text="", icon="RESTRICT_SELECT_OFF"
             ).feature = "non_planar_faces"
 
+            # Degenerate faces row
+            row = panel.row(align=True)
+            split = row.split(factor=factor)
+            split.prop(props, "show_degenerate_faces", text="Degenerate Faces")
+            split.prop(props, "degenerate_faces_color", text="")
+            split.operator(
+                "view3d.select_feature_elements", text="", icon="RESTRICT_SELECT_OFF"
+            ).feature = "degenerate_faces"
+
         # Edges panel
         header, panel = layout.panel("edges_panel", default_closed=False)
         header.label(text="Edges")

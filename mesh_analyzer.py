@@ -96,6 +96,7 @@ class MeshAnalyzer:
         "quad_faces",  # corresponds to show_quad_faces
         "ngon_faces",  # corresponds to show_ngon_faces
         "non_planar_faces",  # corresponds to show_non_planar_faces
+        "degenerate_faces",  # Add this line
     }
 
     def __init__(self, obj: Object):
@@ -202,6 +203,8 @@ class MeshAnalyzer:
                 indices.append(f.index)
             elif feature == "non_planar_faces" and not self._is_planar(f):
                 indices.append(f.index)
+            elif feature == "degenerate_faces" and self._is_degenerate(f):
+                indices.append(f.index)
 
     def _is_planar(self, face: bmesh.types.BMFace) -> bool:
         if len(face.verts) <= 3:
@@ -230,6 +233,41 @@ class MeshAnalyzer:
                 return False
 
         return True
+
+    def _is_degenerate(self, face: bmesh.types.BMFace) -> bool:
+        # Check for zero area
+        if face.calc_area() < 1e-8:
+            return True
+
+        # Check for invalid vertex count
+        verts = face.verts
+        if len(verts) < 3:
+            return True
+
+        # Check for duplicate vertices
+        unique_verts = set(vert.co.to_tuple() for vert in verts)
+        if len(unique_verts) < len(verts):
+            return True
+
+        # Check all consecutive vertices for collinearity
+        for i in range(len(verts)):
+            v1 = verts[i].co
+            v2 = verts[(i + 1) % len(verts)].co
+            v3 = verts[(i + 2) % len(verts)].co
+
+            # Get vectors between consecutive vertices
+            edge1 = (v2 - v1).normalized()
+            edge2 = (v3 - v2).normalized()
+
+            # Disabled check, as a planar ngon of non zero
+            # area is not degenerate
+
+            # Check if vectors are parallel (collinear)
+            # cross_prod = edge1.cross(edge2)
+            # if cross_prod.length < 1e-6:
+            #     return True
+
+        return False
 
     @classmethod
     def invalidate_cache(cls, obj_name: str, features: List[str] = None):
