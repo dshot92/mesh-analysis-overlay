@@ -8,7 +8,7 @@ from . import handlers
 
 class Mesh_Analysis_Overlay_Props(PropertyGroup):
     # FACES
-    show_tri_faces: BoolProperty(
+    tri_faces_enabled: BoolProperty(
         name="Show Triangles",
         description="Show triangle overlays",
         default=False,
@@ -23,7 +23,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=1.0,
     )
 
-    show_quad_faces: BoolProperty(
+    quad_faces_enabled: BoolProperty(
         name="Show Quads",
         description="Show quad overlays",
         default=False,
@@ -38,7 +38,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=1.0,
     )
 
-    show_ngon_faces: BoolProperty(
+    ngon_faces_enabled: BoolProperty(
         name="Show N-gons",
         description="Show n-gon overlays",
         default=False,
@@ -53,7 +53,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=1.0,
     )
 
-    show_non_planar_faces: BoolProperty(
+    non_planar_faces_enabled: BoolProperty(
         name="Show Non-Planar Faces",
         description="Show faces that are not planar",
         default=False,
@@ -68,7 +68,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=1.0,
     )
 
-    show_degenerate_faces: BoolProperty(
+    degenerate_faces_enabled: BoolProperty(
         name="Show Degenerate Faces",
         description="Show faces with zero area or invalid geometry",
         default=False,
@@ -84,7 +84,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     )
 
     # EDGES
-    show_non_manifold_e_edges: BoolProperty(
+    non_manifold_e_edges_enabled: BoolProperty(
         name="Show Non-Manifold Edges",
         description="Show non-manifold edges",
         default=False,
@@ -99,7 +99,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=1.0,
     )
 
-    show_sharp_edges: BoolProperty(
+    sharp_edges_enabled: BoolProperty(
         name="Show Sharp Edges",
         description="Show sharp edges",
         default=False,
@@ -114,7 +114,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=1.0,
     )
 
-    show_seam_edges: BoolProperty(
+    seam_edges_enabled: BoolProperty(
         name="Show Seam Edges",
         description="Show UV seam edges",
         default=False,
@@ -129,7 +129,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=1.0,
     )
 
-    show_boundary_edges: BoolProperty(
+    boundary_edges_enabled: BoolProperty(
         name="Show Boundary Edges",
         description="Display edges that are on mesh boundaries",
         default=False,
@@ -145,7 +145,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     )
 
     # VERTICES
-    show_single_vertices: BoolProperty(
+    single_vertices_enabled: BoolProperty(
         name="Show Singles",
         description="Show single vertex indicators",
         default=False,
@@ -160,7 +160,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=1.0,
     )
 
-    show_non_manifold_v_vertices: BoolProperty(
+    non_manifold_v_vertices_enabled: BoolProperty(
         name="Show Non-Manifold Vertices",
         description="Show non-manifold vertices",
         default=False,
@@ -175,7 +175,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=1.0,
     )
 
-    show_n_pole_vertices: BoolProperty(
+    n_pole_vertices_enabled: BoolProperty(
         name="Show N-Poles (3 edges)",
         description="Show vertices with 3 edges",
         default=False,
@@ -190,7 +190,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=1.0,
     )
 
-    show_e_pole_vertices: BoolProperty(
+    e_pole_vertices_enabled: BoolProperty(
         name="Show E-Poles (5 edges)",
         description="Show vertices with 5 edges",
         default=False,
@@ -205,7 +205,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=1.0,
     )
 
-    show_high_pole_vertices: BoolProperty(
+    high_pole_vertices_enabled: BoolProperty(
         name="Show High-Poles (6+ edges)",
         description="Show vertices with 6 or more edges",
         default=False,

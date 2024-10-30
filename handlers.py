@@ -32,10 +32,15 @@ def mesh_analysis_depsgraph_update(scene, depsgraph):
 
             if obj.type == "MESH" and update.is_updated_geometry:
                 scene_props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+                analyzer = MeshAnalyzer()
                 active_features = [
                     key
                     for key, value in scene_props.items()
-                    if key.startswith("show_") and value
+                    if key
+                    in analyzer.vertex_features.union(
+                        analyzer.edge_features, analyzer.face_features
+                    )
+                    and value
                 ]
 
                 logger.debug(f"Invalidating cache for {obj.name}: {active_features}")

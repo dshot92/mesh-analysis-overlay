@@ -196,13 +196,13 @@ class GPUDrawer:
 
     def _update_feature_set(self, feature_set, primitive_type, props, analyzer):
         for feature in feature_set:
-            if not getattr(props, f"show_{feature}", False):
+            if not getattr(props, f"{feature}_enabled", False):
                 continue
 
-            (verts,) = analyzer.analyze_feature(feature)
-            if verts:
+            indices = analyzer.analyze_feature(feature)
+            if indices:
                 color = tuple(getattr(props, f"{feature}_color"))
-                self.update_feature_batch(feature, verts, color, primitive_type)
+                self.update_feature_batch(feature, indices, color, primitive_type)
 
     def _handle_mode_change(self, obj):
         if not obj or not self.is_running:
@@ -288,7 +288,7 @@ class GPUDrawer:
 
         # Update face overlays
         for feature in analyzer.face_features:
-            if feature in features and getattr(props, f"show_{feature}", False):
+            if feature in features and getattr(props, f"{feature}_enabled", False):
                 indices = analyzer.analyze_feature(feature)
                 if indices:
                     color = tuple(getattr(props, f"{feature}_color"))
@@ -296,7 +296,7 @@ class GPUDrawer:
 
         # Update edge overlays
         for feature in analyzer.edge_features:
-            if feature in features and getattr(props, f"show_{feature}", False):
+            if feature in features and getattr(props, f"{feature}_enabled", False):
                 indices = analyzer.analyze_feature(feature)
                 if indices:
                     color = tuple(getattr(props, f"{feature}_color"))
@@ -304,7 +304,7 @@ class GPUDrawer:
 
         # Update vertex overlays
         for feature in analyzer.vertex_features:
-            if feature in features and getattr(props, f"show_{feature}", False):
+            if feature in features and getattr(props, f"{feature}_enabled", False):
                 indices = analyzer.analyze_feature(feature)
                 if indices:
                     color = tuple(getattr(props, f"{feature}_color"))

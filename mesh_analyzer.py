@@ -77,26 +77,26 @@ class MeshAnalyzer:
     _analyzer_cache_size = 5
 
     vertex_features = {
-        "single_vertices",  # corresponds to show_single_vertices
-        "non_manifold_v_vertices",  # corresponds to show_non_manifold_v_vertices
-        "n_pole_vertices",  # corresponds to show_n_pole_vertices
-        "e_pole_vertices",  # corresponds to show_e_pole_vertices
-        "high_pole_vertices",  # corresponds to show_high_pole_vertices
+        "single_vertices",
+        "non_manifold_v_vertices",
+        "n_pole_vertices",
+        "e_pole_vertices",
+        "high_pole_vertices",
     }
 
     edge_features = {
-        "non_manifold_e_edges",  # corresponds to show_non_manifold_e_edges
-        "sharp_edges",  # corresponds to show_sharp_edges
-        "seam_edges",  # corresponds to show_seam_edges
-        "boundary_edges",  # corresponds to show_boundary_edges
+        "non_manifold_e_edges",
+        "sharp_edges",
+        "seam_edges",
+        "boundary_edges",
     }
 
     face_features = {
-        "tri_faces",  # corresponds to show_tri_faces
-        "quad_faces",  # corresponds to show_quad_faces
-        "ngon_faces",  # corresponds to show_ngon_faces
-        "non_planar_faces",  # corresponds to show_non_planar_faces
-        "degenerate_faces",  # Add this line
+        "tri_faces",
+        "quad_faces",
+        "ngon_faces",
+        "non_planar_faces",
+        "degenerate_faces",
     }
 
     def __init__(self, obj: Object):
