@@ -2,10 +2,7 @@
 
 import bpy
 
-from .gpu_drawer import GPUDrawer
-
-# Update the drawer instance
-drawer = GPUDrawer()
+from .gpu_drawer import drawer
 
 
 class Mesh_Analysis_Overlay(bpy.types.Operator):
@@ -16,11 +13,15 @@ class Mesh_Analysis_Overlay(bpy.types.Operator):
     )
 
     def execute(self, context):
+        print("[DEBUG-OP] Operator executed")
         if drawer.is_running:
+            print("[DEBUG-OP] Stopping drawer")
             drawer.stop()
         else:
+            print("[DEBUG-OP] Starting drawer")
             drawer.start()
-        # Force panel refresh
+
+        print("[DEBUG-OP] Forcing viewport redraw")
         for area in context.screen.areas:
             if area.type == "VIEW_3D":
                 area.tag_redraw()

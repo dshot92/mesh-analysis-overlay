@@ -2,202 +2,265 @@
 
 import bpy
 import gpu
-import mathutils
-from typing import Dict, List, Optional, Tuple, Any
-from bpy.types import Object
 from gpu_extras.batch import batch_for_shader
+from typing import Dict, List, Tuple
+from mathutils import Vector
+from bpy.types import Object
 from .mesh_analyzer import MeshAnalyzer
+import time
+
+# Add at the top level, before the GPUDrawer class
+_GLOBAL_ANALYZER_CACHE = []
+_GLOBAL_CACHE_SIZE = 2
 
 
 class GPUDrawer:
-    def __init__(self) -> None:
-        self.is_running: bool = False
-        self.active_object: Optional[Object] = None
-        self.last_offset: float = 0.0
+    def __init__(self):
+        print("\n=== GPUDrawer Initialization ===")
         self.shader = gpu.shader.from_builtin("FLAT_COLOR")
-        self.handle: Optional[Any] = None
-        self.batches: Dict[str, Optional[Any]] = {}
-        self.toggle_states = {}
-
-    @property
-    def scene_props(self) -> Any:
-        return bpy.context.scene.Mesh_Analysis_Overlay_Properties
-
-    def draw(self) -> None:
-        obj = bpy.context.active_object
-        if not self._is_valid_mesh_object(obj):
-            return
-
-        if obj != self.active_object or not self.batches:
-            self._initialize_for_new_object(obj)
-
-        self._handle_toggle_changes()
-        self._handle_offset_changes()
-        self._draw_batches()
-
-    def start(self) -> None:
-        if not self.is_running:
-            self.handle = bpy.types.SpaceView3D.draw_handler_add(
-                self.draw, (), "WINDOW", "POST_VIEW"
-            )
-            self.is_running = True
-
-    def stop(self) -> None:
-        if self.is_running and self.handle:
-            bpy.types.SpaceView3D.draw_handler_remove(self.handle, "WINDOW")
-            self.handle = None
-            self.is_running = False
-            self.active_object = None
-            self.batches = {}
-
-    def _initialize_for_new_object(self, obj: Object) -> None:
-        self.active_object = obj
         self.batches = {}
+        self.is_running = False
+        self._handle = None
+        self._current_analyzer = None
+        print(f"Initial state:")
+        print(f"- Is running: {self.is_running}")
+        print(f"- Handle: {self._handle}")
+        print(f"- Current analyzer: {self._current_analyzer}")
 
-        # Initialize toggle states and create batches for enabled features
-        for key, (flag_name, _) in self._get_feature_configs().items():
-            current_state = getattr(self.scene_props, flag_name, False)
-            self.toggle_states[flag_name] = current_state
-            setattr(self, flag_name, current_state)
+    def _get_analyzer(self, obj: Object) -> MeshAnalyzer:
+        """Get or create MeshAnalyzer instance for object"""
+        # Check if object already has an analyzer in cache
+        for analyzer in _GLOBAL_ANALYZER_CACHE:
+            if analyzer.obj == obj:
+                print(f"✓ Cache hit for {obj.name}")
+                self._current_analyzer = analyzer
+                return analyzer
 
-            if current_state:
-                self._create_batch_for_feature(key)
+        print(f"× Cache miss for {obj.name}")
+        # Create new analyzer
+        self._current_analyzer = MeshAnalyzer(obj)
 
-    def _get_feature_configs(self) -> Dict[str, Tuple[str, str]]:
-        """Returns {feature_key: (property_name, primitive_type)}"""
-        if not self._is_valid_mesh_object(bpy.context.active_object):
-            return {}
+        # Add to cache, removing oldest if at capacity
+        if len(_GLOBAL_ANALYZER_CACHE) >= _GLOBAL_CACHE_SIZE:
+            _GLOBAL_ANALYZER_CACHE.pop(0)  # Remove oldest
 
-        configs = {}
-        for prop_name in dir(self.scene_props):
-            if not prop_name.startswith("show_"):
-                continue
+        # Add new analyzer to end of list
+        _GLOBAL_ANALYZER_CACHE.append(self._current_analyzer)
+        return self._current_analyzer
 
-            if prop_name.endswith("_faces"):
-                key = prop_name[5:-6]
-                configs[key] = (prop_name, "TRIS")
-            elif prop_name.endswith("_edges"):
-                key = prop_name[5:-6]
-                configs[key] = (prop_name, "LINES")
-            elif prop_name.endswith("_vertices"):
-                key = prop_name[5:-9]
-                configs[key] = (prop_name, "POINTS")
-
-        return configs
-
-    def _handle_toggle_changes(self) -> None:
-        for key, (flag_name, _) in self._get_feature_configs().items():
-            current_state = getattr(self.scene_props, flag_name, False)
-            if current_state != self.toggle_states.get(flag_name, False):
-                self.toggle_states[flag_name] = current_state
-                setattr(self, flag_name, current_state)
-                if current_state:
-                    self._create_batch_for_feature(key)
-                elif key in self.batches:
-                    del self.batches[key]
-
-    def _handle_offset_changes(self) -> None:
-        current_offset = self.scene_props.overlay_offset
-        if current_offset != self.last_offset:
-            self._update_vertex_positions(current_offset)
-            self.last_offset = current_offset
-
-    def _draw_batches(self) -> None:
-        self._setup_gpu_state()
-        for key, (flag_name, primitive_type) in self._get_feature_configs().items():
-            if (
-                getattr(self.scene_props, flag_name, False)
-                and key in self.batches
-                and self.batches[key]
-            ):
-                self._draw_batch(key, primitive_type)
-
-    def _create_batch_for_feature(self, key: str) -> None:
-        prop_name, _ = self._get_feature_configs()[key]
-        if not getattr(self, prop_name, False):
+    def update_feature_batch(
+        self,
+        feature: str,
+        verts: List[Vector],
+        normals: List[Vector],
+        color: Tuple[float, float, float, float],
+        primitive_type: str,
+    ):
+        if not verts:
             return
 
-        suffix = prop_name.split("_")[-1]
-        color = getattr(self.scene_props, f"{key}_{suffix}_color")
-        data = self._get_mesh_data(key)
+        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+        offset = props.overlay_offset if hasattr(props, "overlay_offset") else 0.0
 
-        if data and data[0]:
-            batch = self._create_batch(key, data, color)
-            if batch:
-                self.batches[key] = batch
+        offset_verts = []
+        for v, n in zip(verts, normals):
+            normal = n.normalized()
+            offset_pos = v + (normal * offset)
+            offset_verts.append(offset_pos)
 
-    def _create_batch(
-        self,
-        key: str,
-        data: Tuple[List[mathutils.Vector], List[mathutils.Vector]],
-        color: Tuple[float, float, float, float],
-    ) -> Any:
-        vertices, normals = data
-        if not vertices:
-            return None
+        # Create color array matching vertex count
+        colors = [color] * len(offset_verts)
 
-        self.batches[f"{key}_data"] = (vertices, normals, color)
-        primitive_type = self._get_feature_configs()[key][1]
+        try:
+            batch = batch_for_shader(
+                self.shader,
+                primitive_type,
+                {
+                    "pos": offset_verts,
+                    "color": colors,  # FLAT_COLOR shader requires per-vertex colors
+                },
+            )
+            self.batches[feature] = {"batch": batch, "color": color}
+        except Exception as e:
+            print(f"[ERROR] Failed to create batch: {str(e)}")
 
-        offset_vertices = [
-            v + (n * self.scene_props.overlay_offset) for v, n in zip(vertices, normals)
-        ]
-        colors = [color] * len(offset_vertices)
+    def draw(self):
+        if not self.is_running:
+            return
 
-        return batch_for_shader(
-            self.shader, primitive_type, {"pos": offset_vertices, "color": colors}
+        obj = bpy.context.active_object
+        if not obj or obj.type != "MESH":
+            return
+
+        # Set GPU state
+        gpu.state.blend_set("ALPHA")
+        gpu.state.depth_test_set("LESS_EQUAL")
+        gpu.state.face_culling_set("BACK")
+        gpu.state.point_size_set(
+            bpy.context.scene.Mesh_Analysis_Overlay_Properties.overlay_vertex_radius
+        )
+        gpu.state.line_width_set(
+            bpy.context.scene.Mesh_Analysis_Overlay_Properties.overlay_edge_width
         )
 
-    def _update_vertex_positions(self, current_offset: float) -> None:
-        for key, (flag, primitive_type) in self._get_feature_configs().items():
-            if not getattr(self, flag, False):
-                continue
+        print("\n=== Draw Call ===")
+        print(f"Object: {obj.name}")
+        print(f"Batch count: {len(self.batches)}")
 
-            data_key = f"{key}_data"
-            if data_key not in self.batches or key not in self.batches:
-                continue
+        if (
+            not self.batches
+            or self._current_analyzer is None
+            or self._current_analyzer.obj != obj
+        ):
+            print("Forcing batch update...")
+            self.update_batches(obj)
 
-            vertices, normals, color = self.batches[data_key]
-            offset_vertices = [
-                v + (n * current_offset) for v, n in zip(vertices, normals)
-            ]
-            colors = [color] * len(offset_vertices)
-            self.batches[key] = batch_for_shader(
-                self.shader, primitive_type, {"pos": offset_vertices, "color": colors}
-            )
-
-    def _get_mesh_data(self, key: str) -> Tuple[List, List]:
-        try:
-            if not self._is_valid_mesh_object(self.active_object):
-                return ([], [])
-
-            analyzer = MeshAnalyzer(self.active_object)
-
-            # Get data directly from the appropriate data dictionary
-            if key in analyzer.vertex_data:
-                return analyzer.vertex_data[key]
-            if key in analyzer.edge_data:
-                return analyzer.edge_data[key]
-            if key in analyzer.face_data:
-                return analyzer.face_data[key]
-
-        except ValueError:
-            pass
-        return ([], [])
-
-    def _setup_gpu_state(self) -> None:
+        print("Drawing batches...")
         self.shader.bind()
-        gpu.state.blend_set("ALPHA")
-        gpu.state.face_culling_set("BACK")
-        gpu.state.depth_test_set("LESS")
+        for feature, batch_data in self.batches.items():
+            print(f"- Drawing {feature}")
+            batch_data["batch"].draw(self.shader)
 
-    def _draw_batch(self, key: str, primitive_type: str) -> None:
-        if primitive_type == "POINTS":
-            gpu.state.point_size_set(self.scene_props.overlay_vertex_radius)
-        elif primitive_type == "LINES":
-            gpu.state.line_width_set(self.scene_props.overlay_edge_width)
-        self.batches[key].draw(self.shader)
+        # Reset GPU state
+        gpu.state.blend_set("NONE")
+        gpu.state.face_culling_set("NONE")
 
-    @staticmethod
-    def _is_valid_mesh_object(obj: Optional[Object]) -> bool:
-        return obj is not None and obj.type == "MESH"
+    def _update_all_batches(self, obj):
+        """Update all batches based on current object state"""
+        if not obj or not self.is_running:
+            return
+
+        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+        analyzer = self._get_analyzer(obj)  # This is correct - using cached analyzer
+        self.batches.clear()
+
+        feature_configs = [
+            (analyzer.face_features, "TRIS"),
+            (analyzer.edge_features, "LINES"),
+            (analyzer.vertex_features, "POINTS"),
+        ]
+
+        for feature_set, primitive_type in feature_configs:
+            self._update_feature_set(feature_set, primitive_type, props, analyzer)
+
+    def _update_feature_set(self, feature_set, primitive_type, props, analyzer):
+        for feature in feature_set:
+            if not getattr(props, f"show_{feature}", False):
+                continue
+
+            verts, normals = analyzer.analyze_feature(feature)
+            if verts:
+                color = tuple(getattr(props, f"{feature}_color"))
+                self.update_feature_batch(
+                    feature, verts, normals, color, primitive_type
+                )
+
+    def _handle_mode_change(self, obj):
+        """Handle object mode changes"""
+        if not obj or not self.is_running:
+            return False
+
+        # Force update when:
+        # 1. Exiting edit mode
+        # 2. Entering object mode
+        # 3. Switching between edit/object modes
+        if obj.mode in {"OBJECT", "EDIT"}:
+            print(f"[DEBUG] Mode change detected: {obj.mode}")
+            self._update_all_batches(obj)
+            return True
+        return False
+
+    def start(self):
+        print("\n=== Starting GPUDrawer ===")
+        self.is_running = True
+        if not self._handle:
+            print("Adding draw handler...")
+            self._handle = bpy.types.SpaceView3D.draw_handler_add(
+                self.draw, (), "WINDOW", "POST_VIEW"
+            )
+            print(f"Draw handler added: {self._handle}")
+
+        obj = bpy.context.active_object
+        if obj and obj.type == "MESH":
+            print(f"Initial update for {obj.name}")
+            self.update_batches(obj)
+
+    def stop(self):
+        print("\n=== Stopping GPUDrawer ===")
+        print(f"Current state:")
+        print(f"- Is running: {self.is_running}")
+        print(f"- Handle: {self._handle}")
+        print(f"- Batch count: {len(self.batches)}")
+
+        if not self.is_running:
+            print("Already stopped")
+            return
+
+        self.is_running = False
+        if self._handle:
+            print("Removing draw handler...")
+            bpy.types.SpaceView3D.draw_handler_remove(self._handle, "WINDOW")
+            self._handle = None
+
+        print("Cleaning up...")
+        self.batches.clear()
+        self._current_analyzer = None
+        MeshAnalyzer._cache.clear()
+        print("Cleanup complete")
+
+    def update_batches(self, obj):
+        print("\n=== Update Batches ===")
+        print(f"Object: {obj.name if obj else 'None'}")
+        print(f"Is running: {self.is_running}")
+
+        if not obj or not self.is_running:
+            print("× Skipping update - invalid state")
+            return
+
+        print("Getting analyzer...")
+        analyzer = self._get_analyzer(obj)
+        print(f"Current batch count: {len(self.batches)}")
+        print("Clearing batches...")
+        self.batches.clear()
+
+        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+
+        # Update face overlays
+        print("\nProcessing face features:")
+        for feature in analyzer.face_features:
+            if getattr(props, f"show_{feature}", False):
+                print(f"- Analyzing {feature}")
+                verts, normals = analyzer.analyze_feature(feature)
+                if verts:
+                    print(f"  ✓ Found {len(verts)} vertices")
+                    color = tuple(getattr(props, f"{feature}_color"))
+                    self.update_feature_batch(feature, verts, normals, color, "TRIS")
+
+        # Update edge overlays
+        print("\nProcessing edge features:")
+        for feature in analyzer.edge_features:
+            if getattr(props, f"show_{feature}", False):
+                print(f"- Analyzing {feature}")
+                verts, normals = analyzer.analyze_feature(feature)
+                if verts:
+                    print(f"  ✓ Found {len(verts)} vertices")
+                    color = tuple(getattr(props, f"{feature}_color"))
+                    self.update_feature_batch(feature, verts, normals, color, "LINES")
+
+        # Update vertex overlays
+        print("\nProcessing vertex features:")
+        for feature in analyzer.vertex_features:
+            if getattr(props, f"show_{feature}", False):
+                print(f"- Analyzing {feature}")
+                verts, normals = analyzer.analyze_feature(feature)
+                if verts:
+                    print(f"  ✓ Found {len(verts)} vertices")
+                    color = tuple(getattr(props, f"{feature}_color"))
+                    self.update_feature_batch(feature, verts, normals, color, "POINTS")
+
+        print(f"\nFinal batch count: {len(self.batches)}")
+
+
+# Create and export the drawer instance
+drawer = GPUDrawer()
+__all__ = ["drawer", "GPUDrawer"]

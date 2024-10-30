@@ -2,15 +2,14 @@
 
 import importlib
 
-from .mesh_analyzer import MeshAnalyzerCache
-
-from . import operators, panels, properties, preferences
+from . import operators, panels, properties, preferences, handlers
 
 modules = (
     preferences,
     properties,
     operators,
     panels,
+    handlers,
 )
 
 
@@ -18,10 +17,8 @@ def register():
     for module in modules:
         importlib.reload(module)
         module.register()
-    MeshAnalyzerCache.register()
 
 
 def unregister():
-    MeshAnalyzerCache.unregister()
     for module in reversed(modules):
         module.unregister()

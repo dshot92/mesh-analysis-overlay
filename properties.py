@@ -3,6 +3,7 @@
 import bpy
 from bpy.props import BoolProperty, FloatVectorProperty, FloatProperty
 from bpy.types import PropertyGroup
+from . import handlers
 
 
 class Mesh_Analysis_Overlay_Props(PropertyGroup):
@@ -11,6 +12,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         name="Show Triangles",
         description="Show triangle overlays",
         default=False,
+        update=handlers.property_update,
     )
     tri_faces_color: FloatVectorProperty(
         name="Triangles Color",
@@ -25,6 +27,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         name="Show Quads",
         description="Show quad overlays",
         default=False,
+        update=handlers.property_update,
     )
     quad_faces_color: FloatVectorProperty(
         name="Quads Color",
@@ -39,6 +42,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         name="Show N-gons",
         description="Show n-gon overlays",
         default=False,
+        update=handlers.property_update,
     )
     ngon_faces_color: FloatVectorProperty(
         name="N-gons Color",
@@ -53,6 +57,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         name="Show Non-Planar Faces",
         description="Show faces that are not planar",
         default=False,
+        update=handlers.property_update,
     )
     non_planar_faces_color: FloatVectorProperty(
         name="Non-Planar Faces Color",
@@ -68,6 +73,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         name="Show Non-Manifold Edges",
         description="Show non-manifold edges",
         default=False,
+        update=handlers.property_update,
     )
     non_manifold_e_edges_color: FloatVectorProperty(
         name="Non-Manifold Edges Color",
@@ -82,6 +88,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         name="Show Sharp Edges",
         description="Show sharp edges",
         default=False,
+        update=handlers.property_update,
     )
     sharp_edges_color: FloatVectorProperty(
         name="Sharp Edges Color",
@@ -96,6 +103,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         name="Show Seam Edges",
         description="Show UV seam edges",
         default=False,
+        update=handlers.property_update,
     )
     seam_edges_color: FloatVectorProperty(
         name="Seam Edges Color",
@@ -110,6 +118,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         name="Show Boundary Edges",
         description="Display edges that are on mesh boundaries",
         default=False,
+        update=handlers.property_update,
     )
     boundary_edges_color: FloatVectorProperty(
         name="Boundary Edges Color",
@@ -125,6 +134,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         name="Show Singles",
         description="Show single vertex indicators",
         default=False,
+        update=handlers.property_update,
     )
     single_vertices_color: FloatVectorProperty(
         name="Singles Color",
@@ -139,6 +149,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         name="Show Non-Manifold Vertices",
         description="Show non-manifold vertices",
         default=False,
+        update=handlers.property_update,
     )
     non_manifold_v_vertices_color: FloatVectorProperty(
         name="Non-Manifold Vertices Color",
@@ -153,6 +164,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         name="Show N-Poles (3 edges)",
         description="Show vertices with 3 edges",
         default=False,
+        update=handlers.property_update,
     )
     n_pole_vertices_color: FloatVectorProperty(
         name="N-Poles Color",
@@ -167,6 +179,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         name="Show E-Poles (5 edges)",
         description="Show vertices with 5 edges",
         default=False,
+        update=handlers.property_update,
     )
     e_pole_vertices_color: FloatVectorProperty(
         name="E-Poles Color",
@@ -181,6 +194,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         name="Show High-Poles (6+ edges)",
         description="Show vertices with 6 or more edges",
         default=False,
+        update=handlers.property_update,
     )
     high_pole_vertices_color: FloatVectorProperty(
         name="High-Poles Color",
@@ -197,6 +211,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         description="Distance to offset the overlay faces",
         default=0.001,
         precision=4,
+        update=handlers.offset_update,
     )
     overlay_vertex_radius: FloatProperty(
         name="Overlay Vertex Radius",
