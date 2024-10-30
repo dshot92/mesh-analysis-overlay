@@ -9,7 +9,7 @@ from bpy.types import Object
 
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 logger.propagate = False
 
 if not logger.handlers:
@@ -73,7 +73,7 @@ class MeshCache:
 class MeshAnalyzer:
     _cache = MeshCache()
     _analyzer_cache = []
-    _analyzer_cache_size = 2
+    _analyzer_cache_size = 5
 
     vertex_features = {
         "single_vertices",  # corresponds to show_single_vertices
