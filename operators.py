@@ -32,7 +32,9 @@ class Mesh_Analysis_Overlay(bpy.types.Operator):
 class Select_Feature_Elements(bpy.types.Operator):
     bl_idname = "view3d.select_feature_elements"
     bl_label = "Select Feature Elements"
-    bl_description = "Select mesh elements of this specific feature type"
+    bl_description = (
+        "Select mesh elements of this type. \nShift/Ctrl to extend/subtract selection."
+    )
     bl_options = {"REGISTER", "UNDO"}
 
     feature: bpy.props.StringProperty()
@@ -62,6 +64,7 @@ class Select_Feature_Elements(bpy.types.Operator):
 
         if obj.mode != "EDIT":
             bpy.ops.object.mode_set(mode="EDIT")
+            bpy.ops.mesh.select_mode(type="VERT")
 
         if self.mode == "SET":
             bpy.ops.mesh.select_all(action="DESELECT")
