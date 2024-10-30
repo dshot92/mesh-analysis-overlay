@@ -15,7 +15,7 @@ class MeshAnalysisOverlayPreferences(AddonPreferences):
 
     def draw(self, context):
         layout = self.layout
-        layout.prop(self, "debug_print")
+        # layout.prop(self, "debug_print")
 
 
 classes = (MeshAnalysisOverlayPreferences,)

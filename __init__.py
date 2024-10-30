@@ -1,7 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-import importlib
-
 from . import operators, panels, properties, preferences, handlers
 
 modules = (
@@ -15,7 +13,6 @@ modules = (
 
 def register():
     for module in modules:
-        importlib.reload(module)
         module.register()
 
 

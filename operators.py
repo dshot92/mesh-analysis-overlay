@@ -13,15 +13,11 @@ class Mesh_Analysis_Overlay(bpy.types.Operator):
     )
 
     def execute(self, context):
-        print("[DEBUG-OP] Operator executed")
         if drawer.is_running:
-            print("[DEBUG-OP] Stopping drawer")
             drawer.stop()
         else:
-            print("[DEBUG-OP] Starting drawer")
             drawer.start()
 
-        print("[DEBUG-OP] Forcing viewport redraw")
         for area in context.screen.areas:
             if area.type == "VIEW_3D":
                 area.tag_redraw()

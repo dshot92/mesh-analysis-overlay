@@ -1,9 +1,22 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-from typing import Tuple, List
-import bmesh
 import bpy
+import bmesh
+import logging
+
+from typing import Tuple, List
 from bpy.types import Object
+
+
+logger = logging.getLogger(__name__)
+# logger.setLevel(logging.DEBUG)
+logger.propagate = False
+
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter("%(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
 
 
 class MeshCache:
@@ -52,16 +65,6 @@ class MeshCache:
             self.feature_cache.clear()
 
 
-def get_debug_print():
-    """Get debug print setting from addon preferences"""
-    try:
-        return bpy.context.preferences.addons[
-            "mesh_analysis_overlay"
-        ].preferences.debug_mode
-    except:
-        return False
-
-
 class MeshAnalyzer:
     _cache = MeshCache()
 
@@ -88,7 +91,7 @@ class MeshAnalyzer:
     }
 
     def __init__(self, obj: Object):
-        print(f"\n=== Creating MeshAnalyzer for {obj.name} ===")
+        logger.debug(f"\n=== Creating MeshAnalyzer for {obj.name} ===")
         if not obj or obj.type != "MESH":
             raise ValueError("Invalid mesh object")
 
@@ -97,30 +100,30 @@ class MeshAnalyzer:
         self.analyzed_features = {}
 
     def analyze_feature(self, feature: str) -> Tuple[List, List]:
-        print(f"\n=== Starting Analysis ===")
-        print(f"Object: {self.obj.name}")
-        print(f"Feature: {feature}")
+        logger.debug(f"\n=== Starting Analysis ===")
+        logger.debug(f"Object: {self.obj.name}")
+        logger.debug(f"Feature: {feature}")
 
         # Get cached result if available
         cached = self._cache.get(self.obj.name, feature)
         if cached[0]:
-            print(f"✓ Using cached data")
-            print(f"Found {len(cached[1])} vertices in cache")
+            logger.debug(f"✓ Using cached data")
+            logger.debug(f"Found {len(cached[1])} vertices in cache")
             return (cached[1], cached[2])
 
-        print("× Cache miss - performing new analysis")
+        logger.debug("× Cache miss - performing new analysis")
 
         # Analyze and cache the result
         verts, normals = self._analyze_feature_impl(feature)
-        print(f"✓ Analysis complete")
-        print(f"Found {len(verts)} vertices")
-        print(f"Found {len(normals)} normals")
+        logger.debug(f"✓ Analysis complete")
+        logger.debug(f"Found {len(verts)} vertices")
+        logger.debug(f"Found {len(normals)} normals")
         self._cache.set(self.obj.name, feature, verts, normals)
         return (verts, normals)
 
     def _analyze_feature_impl(self, feature: str) -> Tuple[List, List]:
-        print(f"\n=== Feature Implementation ===")
-        print(f"Creating BMesh for {self.obj.name}")
+        logger.debug(f"\n=== Feature Implementation ===")
+        logger.debug(f"Creating BMesh for {self.obj.name}")
         bm = bmesh.new()
         bm.from_mesh(self.obj.data)
         bm.edges.ensure_lookup_table()
@@ -131,20 +134,20 @@ class MeshAnalyzer:
         normals = []
 
         if feature in self.vertex_features:
-            print("Analyzing vertex feature")
+            logger.debug("Analyzing vertex feature")
             self._analyze_vertex_feature(bm, feature, verts, normals)
         elif feature in self.edge_features:
-            print("Analyzing edge feature")
+            logger.debug("Analyzing edge feature")
             self._analyze_edge_feature(bm, feature, verts, normals)
         elif feature in self.face_features:
-            print("Analyzing face feature")
+            logger.debug("Analyzing face feature")
             self._analyze_face_feature(bm, feature, verts, normals)
 
-        print(f"BMesh analysis complete")
-        print(f"Total BMesh elements:")
-        print(f"- Vertices: {len(bm.verts)}")
-        print(f"- Edges: {len(bm.edges)}")
-        print(f"- Faces: {len(bm.faces)}")
+        logger.debug(f"BMesh analysis complete")
+        logger.debug(f"Total BMesh elements:")
+        logger.debug(f"- Vertices: {len(bm.verts)}")
+        logger.debug(f"- Edges: {len(bm.edges)}")
+        logger.debug(f"- Faces: {len(bm.faces)}")
 
         bm.free()
         return (verts, normals)
@@ -152,11 +155,11 @@ class MeshAnalyzer:
     def _analyze_vertex_feature(
         self, bm: bmesh.types.BMesh, feature: str, verts: List, normals: List
     ):
-        print(f"[DEBUG] Analyzing vertex feature: {feature}")
+        logger.debug(f"[DEBUG] Analyzing vertex feature: {feature}")
         world_matrix = self.obj.matrix_world
         for v in bm.verts:
             if feature == "single_vertices" and len(v.link_edges) == 0:
-                # print(f"[DEBUG] Found single vertex at {v.co}")
+                # logger.debug(f"[DEBUG] Found single vertex at {v.co}")
                 verts.append(world_matrix @ v.co.copy())
                 normals.append(
                     (
@@ -195,11 +198,11 @@ class MeshAnalyzer:
     def _analyze_edge_feature(
         self, bm: bmesh.types.BMesh, feature: str, verts: List, normals: List
     ):
-        print(f"[DEBUG] Analyzing edge feature: {feature}")
+        logger.debug(f"[DEBUG] Analyzing edge feature: {feature}")
         world_matrix = self.obj.matrix_world
         for e in bm.edges:
             if feature == "non_manifold_e_edges" and not e.is_manifold:
-                # print(f"[DEBUG] Found non-manifold edge")
+                # logger.debug(f"[DEBUG] Found non-manifold edge")
                 verts.extend([world_matrix @ v.co.copy() for v in e.verts])
                 normals.extend(
                     [
@@ -243,7 +246,7 @@ class MeshAnalyzer:
     def _analyze_face_feature(
         self, bm: bmesh.types.BMesh, feature: str, verts: List, normals: List
     ):
-        print(f"[DEBUG] Analyzing face feature: {feature}")
+        logger.debug(f"[DEBUG] Analyzing face feature: {feature}")
         world_matrix = self.obj.matrix_world
         for f in bm.faces:
             if feature == "tri_faces" and len(f.verts) == 3:
@@ -308,7 +311,7 @@ class MeshAnalyzer:
 
     def _is_planar(self, face: bmesh.types.BMFace, threshold: float = 0.0) -> bool:
         if len(face.verts) <= 3:
-            # print("[DEBUG] Face is triangle or less - automatically planar")
+            # logger.debug("[DEBUG] Face is triangle or less - automatically planar")
             return True
 
         normal = face.normal
@@ -317,7 +320,7 @@ class MeshAnalyzer:
         for v in face.verts:
             d = abs(normal.dot(v.co - center))
             if d > threshold:
-                # print(f"[DEBUG] Non-planar face detected - deviation: {d}")
+                # logger.debug(f"[DEBUG] Non-planar face detected - deviation: {d}")
                 return False
         return True
 

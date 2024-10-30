@@ -26,18 +26,23 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             depress=drawer.is_running,
         )
         ROW_SCALE = 0.5
+        ALIGNMENT = "LEFT"
         row = layout.row()
         row.scale_y = ROW_SCALE
-        row.alignment = "CENTER"
-        row.label(text="Overlays are cached.", icon="INFO")
+        row.alignment = ALIGNMENT
+        row.label(text="Overlay data is cached.", icon="INFO")
         row = layout.row()
         row.scale_y = ROW_SCALE
-        row.alignment = "CENTER"
-        row.label(text="Turn off and on again")
+        row.alignment = ALIGNMENT
+        row.label(text="Refresh:")
         row = layout.row()
         row.scale_y = ROW_SCALE
-        row.alignment = "CENTER"
-        row.label(text="while in Object Mode to refresh.")
+        row.alignment = ALIGNMENT
+        row.label(text="• Toggling it off/on")
+        row = layout.row()
+        row.scale_y = ROW_SCALE
+        row.alignment = ALIGNMENT
+        row.label(text="• Toggling Edit Mode off/on")
 
         # Faces panel
         header, panel = layout.panel("faces_panel", default_closed=False)

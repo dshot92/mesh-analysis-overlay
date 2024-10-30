@@ -7,7 +7,7 @@
 >
 > Cached data per object allows for editing the mesh in object or edit mode with no problems.
 >
-> **Refresh the overlay by toggling it off and on while in Object Mode**.
+> **The overlay will be refreshed by disabling and re-enabling it or toggling edit mode on/off.**.
 
 ### Vertex Overlays
 - Single vertices
