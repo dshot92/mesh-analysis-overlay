@@ -290,6 +290,15 @@ class GPUDrawer:
         # MeshAnalyzer._cache.clear()  # Changed from clear_analyzer_cache() to _cache.clear()
         logger.debug("Cleanup complete")
 
+    def get_primitive_type(self, feature: str) -> str:
+        if feature in MeshAnalyzer._cache.face_features:
+            return "TRIS"
+        elif feature in MeshAnalyzer._cache.edge_features:
+            return "LINES"
+        elif feature in MeshAnalyzer._cache.vertex_features:
+            return "POINTS"
+        return None
+
     def update_batches(self, obj, features=None):
         logger.debug("\n=== Update Batches ===")
         logger.debug(f"Object: {obj.name if obj else 'None'}")
@@ -302,7 +311,10 @@ class GPUDrawer:
         analyzer = self._get_analyzer(obj)
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
 
-        if features:
+        if not features:
+            # Full update - clear all batches and update everything
+            self._update_all_batches(obj)
+        else:
             # Clear only specified features
             for feature in features:
                 if feature in self.batches:
@@ -315,19 +327,7 @@ class GPUDrawer:
                     indices = analyzer.analyze_feature(feature)
                     if indices:
                         color = tuple(getattr(props, f"{feature}_color"))
-                        primitive_type = (
-                            "TRIS"
-                            if feature in MeshAnalyzer._cache.face_features
-                            else (
-                                "LINES"
-                                if feature in MeshAnalyzer._cache.edge_features
-                                else "POINTS"
-                            )
-                        )
+                        primitive_type = self.get_primitive_type(feature)
                         self.update_feature_batch(
                             feature, indices, color, primitive_type
                         )
-            return
-
-        # Full update - clear all batches and update everything
-        self._update_all_batches(obj)
