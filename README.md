@@ -7,6 +7,18 @@
 > Cached data per object allows editing the mesh in object/edit mode with no problems.
 >
 > **The overlay will be refreshed by disabling and re-enabling it or toggling EDIT mode on/off.**
+### Face Overlays
+- Triangles
+- Quads
+- N-gons (5+ sides)
+- Non-planar faces
+- Degenerate faces
+
+### Edge Overlays
+- Non-manifold edges
+- Sharp edges
+- Seam edges
+- Boundary edges
 
 ### Vertex Overlays
 - Single vertices
@@ -15,25 +27,11 @@
 - E-Poles (5 edges)
 - High Poles (6+ edges)
 
-### Edge Overlays
-- Non-manifold edges
-- Sharp edges
-- Seam edges
-- Boundary edges
-
-### Face Overlays
-- Triangles
-- Quads
-- N-gons (>4 sides)
-- Non-planar faces
-- Degenerate faces
-
-### Display Settings
-- Color customization
-- Opacity control
-- Offset distance
-- Element size
-- Non-planar threshold control
+### Overlay Settings
+- Overlay Offset
+- Overlay Edge Width
+- Overlay Vertex Radius
+- Non-Planar Threshold
 
 ### Selection Tools
 - Quick selection buttons for each overlay type
