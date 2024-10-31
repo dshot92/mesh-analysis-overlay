@@ -8,6 +8,7 @@ import math
 from typing import List, Optional
 from bpy.types import Object
 
+from .feature_data import FEATURE_DATA
 
 logger = logging.getLogger(__name__)
 # logger.setLevel(logging.DEBUG)
@@ -26,29 +27,10 @@ class MeshAnalyzerCache:
         self._analyzers = {}  # {obj_name: (analyzer, feature_results)}
         self._access_order = []  # LRU queue
 
-        # Feature type definitions
-        self.vertex_features = {
-            "single_vertices",
-            "non_manifold_v_vertices",
-            "n_pole_vertices",
-            "e_pole_vertices",
-            "high_pole_vertices",
-        }
-
-        self.edge_features = {
-            "non_manifold_e_edges",
-            "sharp_edges",
-            "seam_edges",
-            "boundary_edges",
-        }
-
-        self.face_features = {
-            "tri_faces",
-            "quad_faces",
-            "ngon_faces",
-            "non_planar_faces",
-            "degenerate_faces",
-        }
+        # Feature type definitions from feature_data
+        self.vertex_features = {feature["id"] for feature in FEATURE_DATA["vertices"]}
+        self.edge_features = {feature["id"] for feature in FEATURE_DATA["edges"]}
+        self.face_features = {feature["id"] for feature in FEATURE_DATA["faces"]}
 
     def get(self, obj_name: str) -> tuple[Optional["MeshAnalyzer"], dict]:
         """Get analyzer and its results from cache"""
