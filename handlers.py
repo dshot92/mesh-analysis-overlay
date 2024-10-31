@@ -1,5 +1,6 @@
 import bpy
 import logging
+import bmesh
 
 from bpy.app.handlers import persistent
 from .mesh_analyzer import MeshAnalyzer
@@ -103,6 +104,52 @@ def update_mesh_analysis_stats(scene, depsgraph):
         ):
             # Clear cache for this object to force recalculation
             del Mesh_Analysis_Overlay_Panel._stats_cache[update.id.name]
+
+
+@persistent
+def handle_edit_mode_changes(scene, depsgraph):
+    """Handler for when the edit mode changes
+    Avoids index error when trying to select deleted element before a refresh
+    """
+    if bpy.context.mode != "EDIT_MESH":
+        return
+
+    for update in depsgraph.updates:
+        if not isinstance(update.id, bpy.types.Object) or update.id.type != "MESH":
+            continue
+
+        obj = update.id
+        if not obj or not update.is_updated_geometry:
+            continue
+
+        bm = bmesh.from_edit_mesh(obj.data)
+
+        # Use Blender's ID properties to store per-object data
+        if "prev_counts" not in obj:
+            obj["prev_counts"] = {
+                "verts": len(bm.verts),
+                "edges": len(bm.edges),
+                "faces": len(bm.faces),
+            }
+            return
+
+        # Check if elements were deleted
+        if (
+            len(bm.verts) < obj["prev_counts"]["verts"]
+            or len(bm.edges) < obj["prev_counts"]["edges"]
+            or len(bm.faces) < obj["prev_counts"]["faces"]
+        ):
+            Mesh_Analysis_Overlay_Panel.clear_stats_cache()
+            MeshAnalyzer.invalidate_cache(obj.name)
+            if drawer and drawer.is_running:
+                drawer.update_batches(obj)
+
+        # Update counts
+        obj["prev_counts"] = {
+            "verts": len(bm.verts),
+            "edges": len(bm.edges),
+            "faces": len(bm.faces),
+        }
 
 
 def register():
