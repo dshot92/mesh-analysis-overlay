@@ -71,6 +71,7 @@ class MeshAnalyzer:
         self.obj = obj
         self.scene_props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
         self.analyzed_features = {}
+        self.mesh_stats = {"verts": 0, "edges": 0, "faces": 0}  # Add mesh stats
 
     @classmethod
     def get_analyzer(cls, obj: Object) -> "MeshAnalyzer":
@@ -108,6 +109,13 @@ class MeshAnalyzer:
         bm.edges.ensure_lookup_table()
         bm.faces.ensure_lookup_table()
         bm.verts.ensure_lookup_table()
+
+        # Store mesh stats
+        self.mesh_stats = {
+            "verts": len(bm.verts),
+            "edges": len(bm.edges),
+            "faces": len(bm.faces),
+        }
 
         indices = []
 

@@ -123,29 +123,21 @@ def handle_edit_mode_changes(scene, depsgraph):
             continue
 
         bm = bmesh.from_edit_mesh(obj.data)
-
-        # Use Blender's ID properties to store per-object data
-        if "prev_counts" not in obj:
-            obj["prev_counts"] = {
-                "verts": len(bm.verts),
-                "edges": len(bm.edges),
-                "faces": len(bm.faces),
-            }
-            return
+        analyzer = MeshAnalyzer.get_analyzer(obj)
 
         # Check if elements were deleted
         if (
-            len(bm.verts) < obj["prev_counts"]["verts"]
-            or len(bm.edges) < obj["prev_counts"]["edges"]
-            or len(bm.faces) < obj["prev_counts"]["faces"]
+            len(bm.verts) < analyzer.mesh_stats["verts"]
+            or len(bm.edges) < analyzer.mesh_stats["edges"]
+            or len(bm.faces) < analyzer.mesh_stats["faces"]
         ):
             Mesh_Analysis_Overlay_Panel.clear_stats_cache()
             MeshAnalyzer.invalidate_cache(obj.name)
             if drawer and drawer.is_running:
                 drawer.update_batches(obj)
 
-        # Update counts
-        obj["prev_counts"] = {
+        # Update cached stats
+        analyzer.mesh_stats = {
             "verts": len(bm.verts),
             "edges": len(bm.edges),
             "faces": len(bm.faces),
