@@ -19,83 +19,71 @@ if not logger.handlers:
 # Used as a callback for depsgraph updates
 @persistent
 def mesh_analysis_depsgraph_update(scene, depsgraph):
-    # Skip if in edit mode
     if bpy.context.mode == "EDIT_MESH":
         return
-
+    if not drawer or not drawer.is_running:
+        return
     logger.debug("\n=== Depsgraph Update Handler ===")
+
+    # Get evaluated depsgraph objects
     for update in depsgraph.updates:
-        if isinstance(update.id, bpy.types.Object):
+        # Check if update is for a mesh object
+        if isinstance(update.id, bpy.types.Object) and update.id.type == "MESH":
             obj = update.id
             logger.debug(f"Object updated: {obj.name} ({obj.type})")
             logger.debug(f"Geometry updated: {update.is_updated_geometry}")
 
             if obj.type == "MESH" and update.is_updated_geometry:
-                scene_props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
-                analyzer = MeshAnalyzer()
-                active_features = [
-                    key
-                    for key, value in scene_props.items()
-                    if key
-                    in analyzer.vertex_features.union(
-                        analyzer.edge_features, analyzer.face_features
-                    )
-                    and value
-                ]
-
-                logger.debug(f"Invalidating cache for {obj.name}: {active_features}")
-                MeshAnalyzer.invalidate_cache(obj.name, features=active_features)
-                if drawer and drawer.is_running:
-                    logger.debug(
-                        f"Updating drawer batches for features: {active_features}"
-                    )
-                    drawer.update_batches(obj, features=active_features)
+                # logger.debug(f"Invalidating cache for {obj.name}")
+                # MeshAnalyzer.invalidate_cache(obj.name)
+                logger.debug(f"Updating drawer batches for features")
+                drawer.update_batches(obj)
 
 
 # Used as a callback for property updates in properties.py
-def property_update(self, context):
-    logger.debug("\n=== Property Update Handler ===")
-    if context and context.active_object:
-        logger.debug(f"Active object: {context.active_object.name}")
+def toggle_enabled_update(self, context):
+    if not drawer or not drawer.is_running:
+        return
+    logger.debug("\n=== Toggle Enabled Update Handler ===")
+    # if context and context.active_object:
+    # logger.debug(f"Active object: {context.active_object.name}")
 
-    if drawer and drawer.is_running:
+    if context and context.active_object:
         obj = context.active_object
-        if obj and obj.type == "MESH":
-            # pass
-            drawer.batches.clear()
-            logger.debug("Updating drawer batches")
-            drawer.update_batches(obj)
+    if obj and obj.type == "MESH":
+        # logger.debug("Updating drawer batches")
+        drawer.update_batches(obj)
+    # if context and context.area:
+    #     context.area.tag_redraw()
 
 
 # Used as a callback for offset property updates in properties.py
 def offset_update(self, context):
     """Callback for when offset property changes"""
-    if context and context.area:
-        context.area.tag_redraw()
-    if drawer and drawer.is_running:
+    if not drawer or not drawer.is_running:
+        return
+    logger.debug("\n=== Offset Update Handler ===")
+    if context and context.active_object:
         obj = context.active_object
         if obj and obj.type == "MESH":
             drawer.update_batches(obj)
+    # if context and context.area:
+    #     context.area.tag_redraw()
 
 
 def non_planar_threshold_update(self, context):
     """Specific handler for non-planar threshold updates"""
+    if not drawer or not drawer.is_running:
+        return
+
     logger.debug("\n=== Non-Planar Threshold Update Handler ===")
     if context and context.active_object:
         obj = context.active_object
         if obj and obj.type == "MESH":
-            # Force full cache invalidation for non-planar faces
             MeshAnalyzer.invalidate_cache(obj.name)
-
-            # Clear and rebuild the batch completely
-            if drawer and drawer.is_running:
-                drawer.batches.clear()
-                drawer.update_batches(obj)
-
-            # Force viewport update
-            for area in context.screen.areas:
-                if area.type == "VIEW_3D":
-                    area.tag_redraw()
+            drawer.update_batches(obj)
+    # if context and context.area:
+    #     context.area.tag_redraw()
 
 
 def register():
