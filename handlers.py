@@ -19,7 +19,7 @@ if not logger.handlers:
 
 # Used as a callback for depsgraph updates
 @persistent
-def mesh_analysis_depsgraph_update(scene, depsgraph):
+def update_analysis_overlay(scene, depsgraph):
     if bpy.context.mode == "EDIT_MESH":
         return
     if not drawer or not drawer.is_running:
@@ -42,7 +42,7 @@ def mesh_analysis_depsgraph_update(scene, depsgraph):
 
 
 # Used as a callback for property updates in properties.py
-def toggle_enabled_update(self, context):
+def update_overlay_enabled_toggles(self, context):
     if not drawer or not drawer.is_running:
         return
     logger.debug("\n=== Toggle Enabled Update Handler ===")
@@ -60,7 +60,7 @@ def toggle_enabled_update(self, context):
 
 
 # Used as a callback for offset property updates in properties.py
-def offset_update(self, context):
+def update_overlay_offset(self, context):
     """Callback for when offset property changes"""
     if not drawer or not drawer.is_running:
         return
@@ -73,7 +73,7 @@ def offset_update(self, context):
     #     context.area.tag_redraw()
 
 
-def non_planar_threshold_update(self, context):
+def update_non_planar_threshold(self, context):
     """Specific handler for non-planar threshold updates"""
     if not drawer or not drawer.is_running:
         return
@@ -107,14 +107,14 @@ def update_mesh_analysis_stats(scene, depsgraph):
 
 def register():
     logger.debug("\n=== Registering Handlers ===")
-    bpy.app.handlers.depsgraph_update_post.append(mesh_analysis_depsgraph_update)
+    bpy.app.handlers.depsgraph_update_post.append(update_analysis_overlay)
     if update_mesh_analysis_stats not in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.append(update_mesh_analysis_stats)
 
 
 def unregister():
     logger.debug("\n=== Unregistering Handlers ===")
-    if mesh_analysis_depsgraph_update in bpy.app.handlers.depsgraph_update_post:
-        bpy.app.handlers.depsgraph_update_post.remove(mesh_analysis_depsgraph_update)
+    if update_analysis_overlay in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.remove(update_analysis_overlay)
     if update_mesh_analysis_stats in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(update_mesh_analysis_stats)
