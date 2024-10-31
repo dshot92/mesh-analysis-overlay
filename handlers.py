@@ -4,6 +4,7 @@ import logging
 from bpy.app.handlers import persistent
 from .mesh_analyzer import MeshAnalyzer
 from .operators import drawer
+from .panels import Mesh_Analysis_Overlay_Panel
 
 logger = logging.getLogger(__name__)
 # logger.setLevel(logging.DEBUG)
@@ -34,8 +35,8 @@ def mesh_analysis_depsgraph_update(scene, depsgraph):
             logger.debug(f"Geometry updated: {update.is_updated_geometry}")
 
             if obj.type == "MESH" and update.is_updated_geometry:
-                # logger.debug(f"Invalidating cache for {obj.name}")
-                # MeshAnalyzer.invalidate_cache(obj.name)
+                # Clear statistics cache when geometry changes
+                Mesh_Analysis_Overlay_Panel.clear_stats_cache()
                 logger.debug(f"Updating drawer batches for features")
                 drawer.update_batches(obj)
 
@@ -51,7 +52,8 @@ def toggle_enabled_update(self, context):
     if context and context.active_object:
         obj = context.active_object
     if obj and obj.type == "MESH":
-        # logger.debug("Updating drawer batches")
+        # Clear statistics cache when features are toggled
+        Mesh_Analysis_Overlay_Panel.clear_stats_cache()
         drawer.update_batches(obj)
     # if context and context.area:
     #     context.area.tag_redraw()
@@ -80,18 +82,39 @@ def non_planar_threshold_update(self, context):
     if context and context.active_object:
         obj = context.active_object
         if obj and obj.type == "MESH":
-            MeshAnalyzer.invalidate_cache(obj.name)
-            drawer.update_batches(obj)
+            MeshAnalyzer.invalidate_cache(obj.name, ["non_planar_faces"])
+            drawer.update_batches(obj, ["non_planar_faces"])
     # if context and context.area:
     #     context.area.tag_redraw()
+
+
+@bpy.app.handlers.depsgraph_update_post.append
+def update_mesh_analysis_stats(scene, depsgraph):
+    # Only process if there are updates to objects
+    if not depsgraph.updates:
+        return
+
+    # Check for relevant mesh updates
+    for update in depsgraph.updates:
+        if (
+            isinstance(update.id, bpy.types.Object)
+            and update.id.type == "MESH"
+            and update.id.name in Mesh_Analysis_Overlay_Panel._stats_cache
+        ):
+            # Clear cache for this object to force recalculation
+            del Mesh_Analysis_Overlay_Panel._stats_cache[update.id.name]
 
 
 def register():
     logger.debug("\n=== Registering Handlers ===")
     bpy.app.handlers.depsgraph_update_post.append(mesh_analysis_depsgraph_update)
+    if update_mesh_analysis_stats not in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.append(update_mesh_analysis_stats)
 
 
 def unregister():
     logger.debug("\n=== Unregistering Handlers ===")
     if mesh_analysis_depsgraph_update in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(mesh_analysis_depsgraph_update)
+    if update_mesh_analysis_stats in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.remove(update_mesh_analysis_stats)

@@ -78,14 +78,17 @@ class Select_Feature_Elements(bpy.types.Operator):
         analyzer = MeshAnalyzer.get_analyzer(obj)
         indices = analyzer.analyze_feature(self.feature)
 
-        # Determine element type from feature name
-        if self.feature in analyzer.face_features:
+        # Get feature type from analyzer
+        feature_type = analyzer.get_feature_type(self.feature)
+
+        # Select elements based on feature type
+        if feature_type == "FACE":
             for idx in indices:
                 bm.faces[idx].select = self.mode != "SUB"
-        elif self.feature in analyzer.edge_features:
+        elif feature_type == "EDGE":
             for idx in indices:
                 bm.edges[idx].select = self.mode != "SUB"
-        elif self.feature in analyzer.vertex_features:
+        elif feature_type == "VERT":
             for idx in indices:
                 bm.verts[idx].select = self.mode != "SUB"
 

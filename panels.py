@@ -13,6 +13,13 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
     bl_region_type = "UI"
     bl_category = "Mesh Analysis Overlay"
 
+    _stats_cache = {}  # Class variable to store statistics
+
+    @classmethod
+    def clear_stats_cache(cls):
+        """Clear the statistics cache"""
+        cls._stats_cache.clear()
+
     def draw(self, context):
         layout = self.layout
         props = context.scene.Mesh_Analysis_Overlay_Properties
@@ -192,91 +199,7 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         header.label(text="Statistics")
 
         if panel:
-            if (
-                drawer.is_running
-                and context.active_object
-                and context.active_object.type == "MESH"
-            ):
-                analyzer = MeshAnalyzer.get_analyzer(context.active_object)
-
-                # Check if any overlay is enabled
-                active_faces = [
-                    f
-                    for f in analyzer.face_features
-                    if getattr(props, f"{f}_enabled", False)
-                ]
-                active_edges = [
-                    f
-                    for f in analyzer.edge_features
-                    if getattr(props, f"{f}_enabled", False)
-                ]
-                active_vertices = [
-                    f
-                    for f in analyzer.vertex_features
-                    if getattr(props, f"{f}_enabled", False)
-                ]
-
-                if not any([active_faces, active_edges, active_vertices]):
-                    box = panel.box()
-                    box.label(text="No overlay enabled")
-                else:
-                    # Create a single box for all statistics
-                    box = panel.box()
-
-                    # Faces stats
-                    if active_faces:
-                        col = box.column(align=True)
-                        col.label(text="Faces:")
-                        face_order = [
-                            "tri_faces",
-                            "quad_faces",
-                            "ngon_faces",
-                            "non_planar_faces",
-                            "degenerate_faces",
-                        ]
-                        for feature in face_order:
-                            if feature in active_faces:
-                                count = len(analyzer.analyze_feature(feature))
-                                row = col.row()
-                                row.label(text=feature.replace("_", " ").title())
-                                row.label(text=str(count))
-
-                    # Edges stats
-                    if active_edges:
-                        col = box.column(align=True)
-                        col.label(text="Edges:")
-                        edge_order = [
-                            "non_manifold_e_edges",
-                            "sharp_edges",
-                            "seam_edges",
-                            "boundary_edges",
-                        ]
-                        for feature in edge_order:
-                            if feature in active_edges:
-                                count = len(analyzer.analyze_feature(feature))
-                                row = col.row()
-                                row.label(text=feature.replace("_", " ").title())
-                                row.label(text=str(count))
-
-                    # Vertices stats
-                    if active_vertices:
-                        col = box.column(align=True)
-                        col.label(text="Vertices:")
-                        vertex_order = [
-                            "single_vertices",
-                            "non_manifold_v_vertices",
-                            "n_pole_vertices",
-                            "e_pole_vertices",
-                            "high_pole_vertices",
-                        ]
-                        for feature in vertex_order:
-                            if feature in active_vertices:
-                                count = len(analyzer.analyze_feature(feature))
-                                row = col.row()
-                                row.label(text=feature.replace("_", " ").title())
-                                row.label(text=str(count))
-            else:
-                panel.label(text="Enable overlay to see statistics")
+            self.draw_statistics(context, panel)
 
         # Offset settings
         header, panel = layout.panel("panel_settings", default_closed=True)
@@ -287,6 +210,55 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             panel.prop(props, "overlay_edge_width", text="Overlay Edge Width")
             panel.prop(props, "overlay_vertex_radius", text="Overlay Vertex Radius")
             panel.prop(props, "non_planar_threshold", text="Non-Planar Threshold")
+
+    def draw_statistics(self, context, panel):
+        """Draw statistics using cached values when possible"""
+        if not (
+            drawer.is_running
+            and context.active_object
+            and context.active_object.type == "MESH"
+        ):
+            panel.label(text="Enable overlay to see statistics")
+            return
+
+        obj = context.active_object
+        props = context.scene.Mesh_Analysis_Overlay_Properties
+
+        # Get cached stats or calculate new ones
+        if obj.name not in self._stats_cache:
+            analyzer = MeshAnalyzer.get_analyzer(obj)
+            stats = {"mode": context.mode, "features": {}}
+
+            feature_groups = [
+                ("Faces", MeshAnalyzer._cache.face_features),
+                ("Edges", MeshAnalyzer._cache.edge_features),
+                ("Vertices", MeshAnalyzer._cache.vertex_features),
+            ]
+
+            for group_name, features in feature_groups:
+                active_features = [
+                    f for f in features if getattr(props, f"{f}_enabled", False)
+                ]
+                if active_features:
+                    stats["features"][group_name] = {
+                        feature: len(analyzer.analyze_feature(feature))
+                        for feature in active_features
+                    }
+
+            self._stats_cache[obj.name] = stats
+
+        # Draw statistics from cache
+        stats = self._stats_cache[obj.name]
+        box = panel.box()
+
+        for group_name, features in stats["features"].items():
+            if features:
+                col = box.column(align=True)
+                col.label(text=f"{group_name}:")
+                for feature_name, count in features.items():
+                    row = col.row()
+                    row.label(text=feature_name.replace("_", " ").title())
+                    row.label(text=str(count))
 
 
 classes = (Mesh_Analysis_Overlay_Panel,)
