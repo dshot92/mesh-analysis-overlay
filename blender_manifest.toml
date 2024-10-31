@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "mesh_analysis_overlay"
-version = "3.0.0"
+version = "3.1.0"
 name = "Mesh Analysis Overlay"
 tagline = "Mesh Analysis Overlay"
 maintainer = "Daniele Stochino <dshot92@gmail.com>"

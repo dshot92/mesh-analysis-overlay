@@ -5,9 +5,10 @@ import bmesh
 import logging
 import math
 
-from typing import Tuple, List
+from typing import List, Optional
 from bpy.types import Object
 
+from .feature_data import FEATURE_DATA
 
 logger = logging.getLogger(__name__)
 # logger.setLevel(logging.DEBUG)
@@ -20,133 +21,87 @@ if not logger.handlers:
     logger.addHandler(handler)
 
 
-class MeshCache:
-    def __init__(self):
-        self.feature_cache = (
-            {}
-        )  # Format: {obj_name: {'is_valid': bool, 'features': {feature: {'indices': []}}}}
+class MeshAnalyzerCache:
+    def __init__(self, max_size=2):
+        self.max_size = max_size
+        self._analyzers = {}  # {obj_name: (analyzer, feature_results)}
+        self._access_order = []  # LRU queue
 
-    def get(self, obj_name: str, feature: str) -> Tuple[bool, List]:
-        """Get cached feature indices for an object"""
-        obj_cache = self.feature_cache.get(obj_name)
-        if not obj_cache or not obj_cache.get("is_valid", False):
-            return (False, [])
+        # Feature type definitions from feature_data
+        self.vertex_features = {feature["id"] for feature in FEATURE_DATA["vertices"]}
+        self.edge_features = {feature["id"] for feature in FEATURE_DATA["edges"]}
+        self.face_features = {feature["id"] for feature in FEATURE_DATA["faces"]}
 
-        feature_data = obj_cache["features"].get(feature)
-        if not feature_data:
-            return (False, [])
+    def get(self, obj_name: str) -> tuple[Optional["MeshAnalyzer"], dict]:
+        """Get analyzer and its results from cache"""
+        if obj_name in self._analyzers:
+            # Move to most recently used
+            self._access_order.remove(obj_name)
+            self._access_order.append(obj_name)
+            return self._analyzers[obj_name]
+        return None, {}
 
-        return (True, feature_data["indices"])
+    def put(self, obj_name: str, analyzer: "MeshAnalyzer", feature_results: dict):
+        """Add or update cache entry"""
+        if obj_name in self._analyzers:
+            self._access_order.remove(obj_name)
+        elif len(self._analyzers) >= self.max_size:
+            # Evict least recently used
+            lru_name = self._access_order.pop(0)
+            del self._analyzers[lru_name]
+            logger.debug(f"Evicting analyzer for: {lru_name}")
 
-    def set(self, obj_name: str, feature: str, indices: List):
-        """Cache feature indices for an object"""
-        if obj_name not in self.feature_cache:
-            self.feature_cache[obj_name] = {
-                "is_valid": True,
-                "features": {},
-            }
-
-        self.feature_cache[obj_name]["features"][feature] = {
-            "indices": indices,
-        }
+        self._analyzers[obj_name] = (analyzer, feature_results)
+        self._access_order.append(obj_name)
+        logger.debug(f"\nCache state: {self._access_order}")
 
     def clear(self):
-        """Clear all cached data"""
-        self.feature_cache.clear()
-
-    def invalidate(self, obj_name: str = None, feature: str = None):
-        """Invalidate cache for specific object or all objects"""
-        if obj_name:
-            if obj_name in self.feature_cache:
-                if feature:
-                    self.feature_cache[obj_name]["features"][feature] = {
-                        "is_valid": False,
-                        "indices": [],
-                    }
-                else:
-                    self.feature_cache[obj_name][
-                        "is_valid"
-                    ] = False  # Set invalid instead of removing
-        else:
-            self.feature_cache.clear()
+        """Clear all cache entries"""
+        self._analyzers.clear()
+        self._access_order.clear()
 
 
 class MeshAnalyzer:
-    _cache = MeshCache()
-    _analyzer_cache = []
-    _analyzer_cache_size = 5
-
-    vertex_features = {
-        "single_vertices",
-        "non_manifold_v_vertices",
-        "n_pole_vertices",
-        "e_pole_vertices",
-        "high_pole_vertices",
-    }
-
-    edge_features = {
-        "non_manifold_e_edges",
-        "sharp_edges",
-        "seam_edges",
-        "boundary_edges",
-    }
-
-    face_features = {
-        "tri_faces",
-        "quad_faces",
-        "ngon_faces",
-        "non_planar_faces",
-        "degenerate_faces",
-    }
+    _cache = MeshAnalyzerCache(max_size=10)
 
     def __init__(self, obj: Object):
-        logger.debug(f"\n=== Creating MeshAnalyzer for {obj.name} ===")
+        # logger.debug(f"\n=== Creating MeshAnalyzer for {obj.name} ===")
         if not obj or obj.type != "MESH":
             raise ValueError("Invalid mesh object")
-
         self.obj = obj
         self.scene_props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
         self.analyzed_features = {}
+        self.mesh_stats = {"verts": 0, "edges": 0, "faces": 0}  # Add mesh stats
 
     @classmethod
     def get_analyzer(cls, obj: Object) -> "MeshAnalyzer":
-        # Check if object already has an analyzer in cache
-        for analyzer in cls._analyzer_cache:
-            if analyzer.obj == obj:
-                return analyzer
+        analyzer, features = cls._cache.get(obj.name)
+        if analyzer:
+            # logger.debug(f"Cache hit for {obj.name}")
+            analyzer.analyzed_features = features
+            return analyzer
 
-        # Create new analyzer
         analyzer = cls(obj)
-        logger.debug(f"\nCreating new analyzer for {obj.name}\n")
-
-        # Add to cache, removing oldest if at capacity
-        if len(cls._analyzer_cache) >= cls._analyzer_cache_size:
-            cls._analyzer_cache.pop(0)
-        cls._analyzer_cache.append(analyzer)
+        cls._cache.put(obj.name, analyzer, {})
         return analyzer
 
-    @classmethod
-    def clear_analyzer_cache(cls):
-        cls._analyzer_cache.clear()
-
     def analyze_feature(self, feature: str) -> List:
-        # Add feature tracking to avoid redundant cache checks
-        if feature in self.analyzed_features:
-            return self.analyzed_features[feature]
+        try:
+            if feature in self.analyzed_features:
+                logger.debug(f"Feature cache hit: {feature}")
+                return self.analyzed_features[feature]
 
-        # Get cached result if available
-        cached = self._cache.get(self.obj.name, feature)
-        if cached[0]:
-            logger.debug(f"Cache hit: {self.obj.name} - {feature}")
-            self.analyzed_features[feature] = cached[1]
-            return cached[1]
-
-        logger.debug(f"Cache miss: {self.obj.name} - {feature}")
-        # Analyze and cache the result
-        indices = self._analyze_feature_impl(feature)
-        self._cache.set(self.obj.name, feature, indices)
-        self.analyzed_features[feature] = indices
-        return indices
+            logger.debug(f"Feature cache miss: {feature}")
+            indices = self._analyze_feature_impl(feature)
+            self.analyzed_features[feature] = indices
+            # Update cache with new feature results
+            self._cache.put(self.obj.name, self, self.analyzed_features)
+            return indices
+        except ReferenceError:
+            # Object reference became invalid (e.g. during undo)
+            logger.debug("Object reference invalid - clearing cache")
+            self._cache.clear()
+            return []
 
     def _analyze_feature_impl(self, feature: str) -> List:
         bm = bmesh.new()
@@ -155,13 +110,20 @@ class MeshAnalyzer:
         bm.faces.ensure_lookup_table()
         bm.verts.ensure_lookup_table()
 
+        # Store mesh stats
+        self.mesh_stats = {
+            "verts": len(bm.verts),
+            "edges": len(bm.edges),
+            "faces": len(bm.faces),
+        }
+
         indices = []
 
-        if feature in self.vertex_features:
+        if feature in self._cache.vertex_features:
             self._analyze_vertex_feature(bm, feature, indices)
-        elif feature in self.edge_features:
+        elif feature in self._cache.edge_features:
             self._analyze_edge_feature(bm, feature, indices)
-        elif feature in self.face_features:
+        elif feature in self._cache.face_features:
             self._analyze_face_feature(bm, feature, indices)
 
         bm.free()
@@ -218,7 +180,7 @@ class MeshAnalyzer:
         center = face.calc_center_median()
 
         # Get the average edge vector as reference
-        ref_edge = (face.verts[1].co - face.verts[0].co).normalized()
+        # ref_edge = (face.verts[1].co - face.verts[0].co).normalized()
 
         # Check each vertex's plane formed with adjacent vertices
         for v in face.verts:
@@ -252,7 +214,7 @@ class MeshAnalyzer:
         # TODO
         # Disabled check, as a planar ngon of non zero area is not degenerate
 
-        # Check all consecutive vertices for collinearity
+        # # Check all consecutive vertices for collinearity
         # for i in range(len(verts)):
         #     v1 = verts[i].co
         #     v2 = verts[(i + 1) % len(verts)].co
@@ -262,27 +224,37 @@ class MeshAnalyzer:
         #     edge1 = (v2 - v1).normalized()
         #     edge2 = (v3 - v2).normalized()
 
-        #     Check if vectors are parallel (collinear)
+        #     # Check if vectors are parallel (collinear)
         #     cross_prod = edge1.cross(edge2)
-        #     if cross_prod.length < 1e-6:
+        #     if cross_prod.length < 1e-8:
         #         return True
 
         return False
 
     @classmethod
-    def invalidate_cache(cls, obj_name: str, features: List[str] = None):
-        """
-        Invalidate cache for specific object and features
-        If features is None, invalidates all features
-        """
-        # Clear the analyzed_features when invalidating cache
-        for analyzer in cls._analyzer_cache:
-            if analyzer.obj.name == obj_name:
+    def invalidate_cache(cls, obj_name: str, features: Optional[List[str]] = None):
+        """Invalidate cache for specific object and features"""
+        # Get analyzer from cache
+        analyzer, _ = cls._cache.get(obj_name)
+        if analyzer:
+            if features:
+                # Clear only specified features
+                for feature in features:
+                    if feature in analyzer.analyzed_features:
+                        del analyzer.analyzed_features[feature]
+            else:
+                # Clear all features
                 analyzer.analyzed_features.clear()
-                break
 
-        if features:
-            for feature in features:
-                cls._cache.invalidate(obj_name, feature)
-        else:
-            cls._cache.invalidate(obj_name)
+            # Update cache
+            cls._cache.put(obj_name, analyzer, analyzer.analyzed_features)
+
+    def get_feature_type(self, feature: str) -> str:
+        """Return the type of feature: 'VERT', 'EDGE', or 'FACE'"""
+        if feature in self._cache.vertex_features:
+            return "VERT"
+        elif feature in self._cache.edge_features:
+            return "EDGE"
+        elif feature in self._cache.face_features:
+            return "FACE"
+        raise ValueError(f"Unknown feature type: {feature}")
