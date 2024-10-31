@@ -75,22 +75,45 @@ class Select_Feature_Elements(bpy.types.Operator):
         bm.edges.ensure_lookup_table()
         bm.verts.ensure_lookup_table()
 
-        analyzer = MeshAnalyzer.get_analyzer(obj)
-        indices = analyzer.analyze_feature(self.feature)
+        try:
+            analyzer = MeshAnalyzer.get_analyzer(obj)
+            indices = analyzer.analyze_feature(self.feature)
+            feature_type = analyzer.get_feature_type(self.feature)
 
-        # Get feature type from analyzer
-        feature_type = analyzer.get_feature_type(self.feature)
+            # Select elements based on feature type
+            if feature_type == "FACE":
+                for idx in indices:
+                    if idx < len(bm.faces):
+                        bm.faces[idx].select = self.mode != "SUB"
+            elif feature_type == "EDGE":
+                for idx in indices:
+                    if idx < len(bm.edges):
+                        bm.edges[idx].select = self.mode != "SUB"
+            elif feature_type == "VERT":
+                for idx in indices:
+                    if idx < len(bm.verts):
+                        bm.verts[idx].select = self.mode != "SUB"
 
-        # Select elements based on feature type
-        if feature_type == "FACE":
-            for idx in indices:
-                bm.faces[idx].select = self.mode != "SUB"
-        elif feature_type == "EDGE":
-            for idx in indices:
-                bm.edges[idx].select = self.mode != "SUB"
-        elif feature_type == "VERT":
-            for idx in indices:
-                bm.verts[idx].select = self.mode != "SUB"
+        except (IndexError, ReferenceError):
+            # Clear cache and reanalyze if indices are invalid
+            MeshAnalyzer._cache.clear()
+            analyzer = MeshAnalyzer.get_analyzer(obj)
+            indices = analyzer.analyze_feature(self.feature)
+            feature_type = analyzer.get_feature_type(self.feature)
+
+            # Try selection again with fresh data
+            if feature_type == "FACE":
+                for idx in indices:
+                    if idx < len(bm.faces):
+                        bm.faces[idx].select = self.mode != "SUB"
+            elif feature_type == "EDGE":
+                for idx in indices:
+                    if idx < len(bm.edges):
+                        bm.edges[idx].select = self.mode != "SUB"
+            elif feature_type == "VERT":
+                for idx in indices:
+                    if idx < len(bm.verts):
+                        bm.verts[idx].select = self.mode != "SUB"
 
         bmesh.update_edit_mesh(mesh)
         return {"FINISHED"}
