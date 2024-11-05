@@ -36,7 +36,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         description="Distance to offset the overlay faces",
         default=0.01,
         precision=4,
-        update=handlers.update_overlay_offset,
+        # update=handlers.update_overlay_offset,
     )
     overlay_vertex_radius: FloatProperty(
         name="Overlay Vertex Radius",

@@ -24,35 +24,16 @@ if not logger.handlers:
 
 
 class MeshAnalyzer:
-    # Define feature sets as class attributes
-    vertex_features = {
-        "single_vertices",
-        "non_manifold_v_vertices",
-        "n_pole_vertices",
-        "e_pole_vertices",
-        "high_pole_vertices",
-    }
-
-    edge_features = {
-        "non_manifold_e_edges",
-        "sharp_edges",
-        "seam_edges",
-        "boundary_edges",
-    }
-
-    face_features = {
-        "tri_faces",
-        "quad_faces",
-        "ngon_faces",
-        "non_planar_faces",
-        "degenerate_faces",
-    }
+    # Define feature sets from feature_data
+    vertex_features = {feature["id"] for feature in FEATURE_DATA["vertices"]}
+    edge_features = {feature["id"] for feature in FEATURE_DATA["edges"]}
+    face_features = {feature["id"] for feature in FEATURE_DATA["faces"]}
 
     # Class-level cache for analyzers
-    _analyzers = {}  # Will store {obj_name: (timestamp, analyzer)}
-    _analysis_cache = {}
-    _batch_cache = {}
-    _max_queue_size = 2
+    _analyzers = {}  # {obj_name: (timestamp, analyzer)}
+    _analysis_cache = {}  # {(obj_name, feature): indices}
+    _batch_cache = {}  # {(obj_name, feature): batch_data}
+    _max_queue_size = 5  # Increased cache size
 
     def __init__(self, obj: Object):
         if not obj or obj.type != "MESH":
@@ -63,34 +44,17 @@ class MeshAnalyzer:
         self._shader = gpu.shader.from_builtin("FLAT_COLOR")
 
     def analyze_feature(self, feature: str) -> List:
-        # Validate object still exists
         if not self.obj or not self.obj.id_data:
             return []
 
-        feature_category = None
-        feature_data = None
-        for category, features in FEATURE_DATA.items():
-            for f in features:
-                if f["id"] == feature:
-                    feature_category = category
-                    feature_data = f
-                    break
-            if feature_data:
-                break
-
-        # Create a unique cache key that includes object data
-        cache_key = (
-            self.obj.name,  # Use object name instead of id_properties
-            self.obj.data.id_data.original.id_properties_ensure(),  # Include mesh data state
-            feature,
-            feature_category,
-        )
+        # Create cache key including object name
+        cache_key = (self.obj.name, feature)
 
         # Check cache first
         if cache_key in self._analysis_cache:
             return self._analysis_cache[cache_key]
 
-        # If not in cache, perform analysis
+        # Perform analysis and cache result
         indices = self._analyze_feature_impl(feature)
         self._analysis_cache[cache_key] = indices
         return indices
@@ -317,12 +281,11 @@ class MeshAnalyzer:
 
     @classmethod
     def get_analyzer(cls, obj: Object) -> "MeshAnalyzer":
-        """Get or create a MeshAnalyzer instance for the given object"""
         if not obj or obj.type != "MESH":
             raise ValueError("Invalid mesh object")
 
         obj_name = obj.name
-        current_time = bpy.context.scene.frame_current  # Using frame as timestamp
+        current_time = bpy.context.scene.frame_current
 
         # Check if analyzer exists and is still valid
         if obj_name in cls._analyzers:
@@ -334,10 +297,19 @@ class MeshAnalyzer:
         # Create new analyzer
         analyzer = cls(obj)
 
-        # Add to queue, remove oldest if needed
+        # Manage cache size
         if len(cls._analyzers) >= cls._max_queue_size:
+            # Remove oldest analyzer and its associated caches
             oldest_name = min(cls._analyzers.keys(), key=lambda k: cls._analyzers[k][0])
             del cls._analyzers[oldest_name]
+
+            # Clear caches for oldest object
+            cls._analysis_cache = {
+                k: v for k, v in cls._analysis_cache.items() if k[0] != oldest_name
+            }
+            cls._batch_cache = {
+                k: v for k, v in cls._batch_cache.items() if k[0] != oldest_name
+            }
 
         cls._analyzers[obj_name] = (current_time, analyzer)
         return analyzer

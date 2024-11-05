@@ -22,6 +22,10 @@ class Mesh_Analysis_Overlay(bpy.types.Operator):
             drawer.stop()
         else:
             drawer.start()
+            # Initialize with current object if available
+            obj = context.active_object
+            if obj and obj.type == "MESH":
+                drawer.handle_object_switch(obj)
 
         for area in context.screen.areas:
             if area.type == "VIEW_3D":
