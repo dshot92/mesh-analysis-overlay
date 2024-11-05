@@ -1,19 +1,6 @@
-import logging
-
+from venv import logger
 from .mesh_analyzer import MeshAnalyzer
 from .operators import drawer
-from .panels import Mesh_Analysis_Overlay_Panel
-
-
-logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
-logger.propagate = False
-
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter("%(message)s")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
 
 
 # Used as a callback for property updates in properties.py
@@ -39,8 +26,8 @@ def update_non_planar_threshold(self, context):
 
 
 def register():
-    logger.debug("\n=== Registering Handlers ===")
+    pass
 
 
 def unregister():
-    logger.debug("\n=== Unregistering Handlers ===")
+    pass

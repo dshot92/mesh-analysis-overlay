@@ -5,6 +5,7 @@ import bmesh
 import math
 import gpu
 import numpy as np
+from collections import deque
 
 from typing import List, Optional
 from bpy.types import Object
@@ -19,10 +20,10 @@ class MeshAnalyzer:
     face_features = {feature["id"] for feature in FEATURE_DATA["faces"]}
 
     # Class-level cache for analyzers
-    _analyzers = {}  # {obj_name: (timestamp, analyzer)}
+    _analyzers = {}  # {obj_name: analyzer}
+    _analyzer_queue = deque(maxlen=5)  # Tracks order of analyzers
     _analysis_cache = {}  # {(obj_name, feature): indices}
     _batch_cache = {}  # {(obj_name, feature): batch_data}
-    _max_queue_size = 5  # Increased cache size
 
     def __init__(self, obj: Object):
         if not obj or obj.type != "MESH":
@@ -32,14 +33,10 @@ class MeshAnalyzer:
         self.mesh_stats = {
             "mesh": {
                 "Vertices": len(obj.data.vertices),
-                "Edges": len(obj.data.edges), 
+                "Edges": len(obj.data.edges),
                 "Faces": len(obj.data.polygons),
             },
-            "features": {
-                "Vertices": {},
-                "Edges": {},
-                "Faces": {}
-            }
+            "features": {"Vertices": {}, "Edges": {}, "Faces": {}},
         }
         self._shader = gpu.shader.from_builtin("FLAT_COLOR")
 
@@ -265,28 +262,26 @@ class MeshAnalyzer:
         cls._batch_cache.clear()
 
     @classmethod
-    def get_analyzer(cls, obj: Object) -> "MeshAnalyzer":
+    def get_analyzer(cls, obj: Object):
         if not obj or obj.type != "MESH":
             raise ValueError("Invalid mesh object")
 
         obj_name = obj.name
-        current_time = bpy.context.scene.frame_current
 
+        # Return existing analyzer if valid
         if obj_name in cls._analyzers:
-            timestamp, analyzer = cls._analyzers[obj_name]
+            analyzer = cls._analyzers[obj_name]
             if analyzer.obj.id_data:  # Check if object still exists
-                cls._analyzers[obj_name] = (current_time, analyzer)  # Update timestamp
                 return analyzer
 
         # Create new analyzer
         analyzer = cls(obj)
 
-        # Manage cache size
-        if len(cls._analyzers) >= cls._max_queue_size:
-            # Remove oldest analyzer and its associated caches
-            oldest_name = min(cls._analyzers.keys(), key=lambda k: cls._analyzers[k][0])
+        # Only manage queue if adding new analyzer
+        if len(cls._analyzer_queue) == cls._analyzer_queue.maxlen:
+            # Remove oldest if at capacity
+            oldest_name = cls._analyzer_queue[0]
             del cls._analyzers[oldest_name]
-
             # Clear caches for oldest object
             cls._analysis_cache = {
                 k: v for k, v in cls._analysis_cache.items() if k[0] != oldest_name
@@ -295,7 +290,8 @@ class MeshAnalyzer:
                 k: v for k, v in cls._batch_cache.items() if k[0] != oldest_name
             }
 
-        cls._analyzers[obj_name] = (current_time, analyzer)
+        cls._analyzers[obj_name] = analyzer
+        cls._analyzer_queue.append(obj_name)
         return analyzer
 
     @classmethod
@@ -350,26 +346,34 @@ class MeshAnalyzer:
 
     def update_statistics(self):
         # Update basic mesh stats
-        self.mesh_stats["mesh"].update({
-            "Vertices": len(self.obj.data.vertices),
-            "Edges": len(self.obj.data.edges),
-            "Faces": len(self.obj.data.polygons),
-        })
-        
-        # Update feature stats
-        self.mesh_stats["features"].update({
-            "Vertices": {
-                feature: len(self.analyze_feature(feature))
-                for feature in self.vertex_features
+        self.mesh_stats = {
+            "mesh": {
+                "Vertices": len(self.obj.data.vertices),
+                "Edges": len(self.obj.data.edges),
+                "Faces": len(self.obj.data.polygons),
             },
-            "Edges": {
-                feature: len(self.analyze_feature(feature))
-                for feature in self.edge_features
+            "features": {
+                "Vertices": {
+                    feature: len(self.analyze_feature(feature))
+                    for feature in self.vertex_features
+                },
+                "Edges": {
+                    feature: len(self.analyze_feature(feature))
+                    for feature in self.edge_features
+                },
+                "Faces": {
+                    feature: len(self.analyze_feature(feature))
+                    for feature in self.face_features
+                },
             },
-            "Faces": {
-                feature: len(self.analyze_feature(feature))
-                for feature in self.face_features
-            }
-        })
-        
+        }
         return self.mesh_stats
+
+    def get_feature_type(self, feature: str) -> str:
+        if feature in self.vertex_features:
+            return "VERT"
+        elif feature in self.edge_features:
+            return "EDGE"
+        elif feature in self.face_features:
+            return "FACE"
+        return None
