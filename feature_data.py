@@ -22,13 +22,13 @@ FEATURE_DATA = {
         },
         {
             "id": "non_planar_faces",
-            "label": "Non-Planar Faces",
+            "label": "Non-Planar",
             "description": "Show faces that are not planar",
             "default_color": (1.0, 0.7, 0.0, 0.5),
         },
         {
             "id": "degenerate_faces",
-            "label": "Degenerate Faces",
+            "label": "Degenerate",
             "description": "Show faces with zero area or invalid geometry",
             "default_color": (1.0, 0.0, 0.5, 0.5),
         },
@@ -36,25 +36,25 @@ FEATURE_DATA = {
     "edges": [
         {
             "id": "non_manifold_e_edges",
-            "label": "Non-Manifold Edges",
+            "label": "Non-Manifold",
             "description": "Show non-manifold edges",
             "default_color": (1.0, 0.5, 0.0, 0.5),
         },
         {
             "id": "sharp_edges",
-            "label": "Sharp Edges",
+            "label": "Sharp",
             "description": "Show sharp edges",
             "default_color": (1.0, 1.0, 1.0, 0.5),
         },
         {
             "id": "seam_edges",
-            "label": "Seam Edges",
+            "label": "Seam",
             "description": "Show UV seam edges",
             "default_color": (1.0, 0.0, 0.0, 0.5),
         },
         {
             "id": "boundary_edges",
-            "label": "Boundary Edges",
+            "label": "Boundary",
             "description": "Display edges that are on mesh boundaries",
             "default_color": (0.0, 1.0, 1.0, 0.5),
         },
@@ -62,13 +62,13 @@ FEATURE_DATA = {
     "vertices": [
         {
             "id": "single_vertices",
-            "label": "Single Vertices",
+            "label": "Single",
             "description": "Show single vertex indicators",
             "default_color": (1.0, 1.0, 0.0, 0.5),
         },
         {
             "id": "non_manifold_v_vertices",
-            "label": "Non-Manifold Vertices",
+            "label": "Non-Manifold",
             "description": "Show non-manifold vertices",
             "default_color": (1.0, 0.0, 0.5, 0.5),
         },
