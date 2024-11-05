@@ -291,7 +291,9 @@ class MeshAnalyzer:
         if len(cls._analyzer_queue) == cls._analyzer_queue.maxlen:
             # Remove oldest if at capacity
             oldest_name = cls._analyzer_queue[0]
-            del cls._analyzers[oldest_name]
+            cls._analyzers.pop(
+                oldest_name, None
+            )  # Use pop with default None to avoid KeyError
             # Clear caches for oldest object
             cls._analysis_cache = {
                 k: v for k, v in cls._analysis_cache.items() if k[0] != oldest_name
