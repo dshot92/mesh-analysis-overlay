@@ -56,7 +56,6 @@ class GPUDrawer:
                 vertex_shader = """
                     uniform mat4 viewMatrix;
                     uniform mat4 windowMatrix;
-                    uniform vec3 viewOrigin;
                     uniform float normal_offset;
                     
                     in vec3 pos;
@@ -65,8 +64,7 @@ class GPUDrawer:
                     void main()
                     {
                         vec3 world_pos = pos;
-                        float offset_amount = distance(world_pos, viewOrigin) * normal_offset;
-                        vec3 offset_pos = world_pos + (normal * offset_amount);
+                        vec3 offset_pos = world_pos + (normal * normal_offset);
                         gl_Position = windowMatrix * viewMatrix * vec4(offset_pos, 1.0);
                     }
                 """
@@ -101,7 +99,6 @@ class GPUDrawer:
                 vertex_shader = """
                     uniform mat4 viewMatrix;
                     uniform mat4 windowMatrix;
-                    uniform vec3 viewOrigin;
                     uniform float normal_offset;
                     
                     in vec3 pos;
@@ -109,8 +106,7 @@ class GPUDrawer:
                     
                     void main() {
                         vec3 world_pos = pos;
-                        float offset_amount = distance(world_pos, viewOrigin) * normal_offset;
-                        vec3 offset_pos = world_pos + (normal * offset_amount);
+                        vec3 offset_pos = world_pos + (normal * normal_offset);
                         gl_Position = windowMatrix * viewMatrix * vec4(offset_pos, 1.0);
                     }
                 """
@@ -161,36 +157,12 @@ class GPUDrawer:
             shader = batch_data["shader"]
             shader.bind()
 
-            # Set uniforms based on primitive type
-            if feature in MeshAnalyzer.vertex_features:
-                # For vertex shader (points)
-                shader.uniform_float("viewMatrix", bpy.context.region_data.view_matrix)
-                shader.uniform_float(
-                    "windowMatrix", bpy.context.region_data.window_matrix
-                )
-                shader.uniform_float(
-                    "viewOrigin",
-                    bpy.context.region_data.view_matrix.inverted().translation,
-                )
-                shader.uniform_float(
-                    "normal_offset",
-                    bpy.context.scene.Mesh_Analysis_Overlay_Properties.overlay_offset,
-                )
-            else:
-                # For edge/face shader
-                shader.uniform_float("viewMatrix", bpy.context.region_data.view_matrix)
-                shader.uniform_float(
-                    "windowMatrix", bpy.context.region_data.window_matrix
-                )
-                shader.uniform_float(
-                    "viewOrigin",
-                    bpy.context.region_data.view_matrix.inverted().translation,
-                )
-                shader.uniform_float(
-                    "normal_offset",
-                    bpy.context.scene.Mesh_Analysis_Overlay_Properties.overlay_offset,
-                )
-
+            shader.uniform_float("viewMatrix", bpy.context.region_data.view_matrix)
+            shader.uniform_float("windowMatrix", bpy.context.region_data.window_matrix)
+            shader.uniform_float(
+                "normal_offset",
+                bpy.context.scene.Mesh_Analysis_Overlay_Properties.overlay_offset,
+            )
             shader.uniform_float("color", batch_data["color"])
             batch_data["batch"].draw(shader)
 
