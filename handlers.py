@@ -23,7 +23,28 @@ def update_overlay_enabled_toggles(self, context):
 
 
 def update_non_planar_threshold(self, context):
-    pass
+    if not drawer or not drawer.is_running:
+        return
+
+    obj = context.active_object
+    if obj and obj.type == "MESH":
+        # Clear non-planar cache and batch
+        analyzer = MeshAnalyzer.get_analyzer(obj)
+        if hasattr(analyzer, "_cache"):
+            analyzer._cache.pop("non_planar", None)
+        if "non_planar" in drawer.batches:
+            del drawer.batches["non_planar"]
+
+        # Force immediate batch update
+        indices = analyzer.analyze_feature("non_planar")
+        if indices:
+            props = context.scene.Mesh_Analysis_Overlay_Properties
+            color = tuple(props.non_planar_color)
+            drawer.update_feature_batch("non_planar", indices, color, "TRIS")
+
+    for area in context.screen.areas:
+        if area.type == "VIEW_3D":
+            area.tag_redraw()
 
 
 @persistent
@@ -46,9 +67,9 @@ def handle_mode_changes(scene):
             MeshAnalyzer._clear_cache_for_object(obj.name)
             MeshAnalyzer.update_analysis(obj)
 
-            for area in bpy.context.screen.areas:
-                if area.type == "VIEW_3D":
-                    area.tag_redraw()
+        for area in bpy.context.screen.areas:
+            if area.type == "VIEW_3D":
+                area.tag_redraw()
 
     handle_mode_changes.last_mode = current_mode
 
