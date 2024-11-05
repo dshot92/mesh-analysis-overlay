@@ -21,10 +21,12 @@ class MeshAnalyzer:
 
     # Class-level cache for analyzers
     _analyzers = {}  # {obj_name: analyzer}
-    _analyzer_queue = deque(maxlen=2)  # Tracks order of analyzers
+    _analyzer_queue = deque(maxlen=10)  # Tracks order of analyzers
     _analysis_cache = {}  # {(obj_name, feature): indices}
     _batch_cache = {}  # {(obj_name, feature): batch_data}
-    _mesh_stats_cache = {}  # {obj_name: stats} - New cache for mesh stats
+    _mesh_stats_cache = (
+        {}
+    )  # {obj_name: {"verts": count, "edges": count, "faces": count}}
 
     def __init__(self, obj: Object):
         if not obj or obj.type != "MESH":
@@ -267,47 +269,33 @@ class MeshAnalyzer:
             raise ValueError("Invalid mesh object")
 
         obj_name = obj.name
+        current_stats = {
+            "verts": len(obj.data.vertices),
+            "edges": len(obj.data.edges),
+            "faces": len(obj.data.polygons),
+        }
 
-        # Return existing analyzer if valid and mesh hasn't changed
+        # Check if mesh data has changed by comparing stats
         if obj_name in cls._analyzers:
             analyzer = cls._analyzers[obj_name]
             try:
-                # Try to access object data - will fail if object is deleted
                 analyzer.obj.data
-                # Check if mesh stats have changed
-                current_stats = {
-                    "verts": len(obj.data.vertices),
-                    "edges": len(obj.data.edges),
-                    "faces": len(obj.data.polygons),
-                }
-                if cls._mesh_stats_cache.get(obj_name) == current_stats:
+                cached_stats = cls._mesh_stats_cache.get(obj_name, {})
+                if current_stats != cached_stats:
+                    # Mesh topology changed, clear caches for this object
+                    cls._clear_cache_for_object(obj_name)
+                else:
                     return analyzer
             except ReferenceError:
-                # Object has been deleted, clear caches
                 cls._clear_cache_for_object(obj_name)
 
-        # Create new analyzer
+        # Create new analyzer and store current stats
         analyzer = cls(obj)
-
-        # Only manage queue if adding new analyzer
-        if len(cls._analyzer_queue) == cls._analyzer_queue.maxlen:
-            # Remove oldest if at capacity
-            oldest_name = cls._analyzer_queue[0]
-            cls._analyzers.pop(
-                oldest_name, None
-            )  # Use pop with default None to avoid KeyError
-            # Clear caches for oldest object
-            cls._analysis_cache = {
-                k: v for k, v in cls._analysis_cache.items() if k[0] != oldest_name
-            }
-            cls._batch_cache = {
-                k: v for k, v in cls._batch_cache.items() if k[0] != oldest_name
-            }
-
         cls._analyzers[obj_name] = analyzer
+        cls._mesh_stats_cache[obj_name] = current_stats
         cls._analyzer_queue.append(obj_name)
 
-        # Only clean up if queue is at capacity
+        # Clean up if queue is at capacity
         if len(cls._analyzer_queue) > cls._analyzer_queue.maxlen:
             oldest_name = cls._analyzer_queue[0]
             cls._analyzers.pop(oldest_name, None)

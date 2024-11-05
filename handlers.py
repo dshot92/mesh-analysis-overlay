@@ -1,6 +1,7 @@
-from venv import logger
 from .mesh_analyzer import MeshAnalyzer
 from .operators import drawer
+import bpy
+from bpy.app.handlers import persistent
 
 
 # Used as a callback for property updates in properties.py
@@ -25,9 +26,37 @@ def update_non_planar_threshold(self, context):
     pass
 
 
+@persistent
+def handle_mode_changes(scene):
+    if not hasattr(handle_mode_changes, "last_mode"):
+        handle_mode_changes.last_mode = "OBJECT"
+
+    if not bpy.context.active_object:
+        return
+
+    obj = bpy.context.active_object
+    if obj.type != "MESH":
+        return
+
+    # Only trigger when specifically changing from EDIT to OBJECT mode
+    current_mode = obj.mode
+    if current_mode == "OBJECT" and handle_mode_changes.last_mode == "EDIT":
+        if drawer and drawer.is_running:
+            # Only clear cache for the current object
+            MeshAnalyzer._clear_cache_for_object(obj.name)
+            MeshAnalyzer.update_analysis(obj)
+
+            for area in bpy.context.screen.areas:
+                if area.type == "VIEW_3D":
+                    area.tag_redraw()
+
+    handle_mode_changes.last_mode = current_mode
+
+
 def register():
-    pass
+    bpy.app.handlers.depsgraph_update_post.append(handle_mode_changes)
 
 
 def unregister():
-    pass
+    if handle_mode_changes in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.remove(handle_mode_changes)
