@@ -4,8 +4,9 @@ import bpy
 import bmesh
 import logging
 import math
+import gpu
 import numpy as np
-
+from gpu_extras.batch import batch_for_shader
 from typing import List, Optional
 from bpy.types import Object
 
@@ -22,87 +23,44 @@ if not logger.handlers:
     logger.addHandler(handler)
 
 
-class MeshAnalyzerCache:
-    def __init__(self, max_size=2):
-        self.max_size = max_size
-        self._analyzers = {}  # {obj_name: (analyzer, feature_results)}
-        self._access_order = []  # LRU queue
-
-        # Feature type definitions from feature_data
-        self.vertex_features = {feature["id"] for feature in FEATURE_DATA["vertices"]}
-        self.edge_features = {feature["id"] for feature in FEATURE_DATA["edges"]}
-        self.face_features = {feature["id"] for feature in FEATURE_DATA["faces"]}
-
-    def get(self, obj_name: str) -> tuple[Optional["MeshAnalyzer"], dict]:
-        """Get analyzer and its results from cache"""
-        if obj_name in self._analyzers:
-            # Move to most recently used
-            self._access_order.remove(obj_name)
-            self._access_order.append(obj_name)
-            return self._analyzers[obj_name]
-        return None, {}
-
-    def put(self, obj_name: str, analyzer: "MeshAnalyzer", feature_results: dict):
-        """Add or update cache entry"""
-        if obj_name in self._analyzers:
-            self._access_order.remove(obj_name)
-        elif len(self._analyzers) >= self.max_size:
-            # Evict least recently used
-            lru_name = self._access_order.pop(0)
-            del self._analyzers[lru_name]
-            logger.debug(f"Evicting analyzer for: {lru_name}")
-
-        self._analyzers[obj_name] = (analyzer, feature_results)
-        self._access_order.append(obj_name)
-        logger.debug(f"\nCache state: {self._access_order}")
-
-    def clear(self):
-        """Clear all cache entries"""
-        self._analyzers.clear()
-        self._access_order.clear()
-
-
 class MeshAnalyzer:
-    _cache = MeshAnalyzerCache(max_size=10)
+    # Define feature sets as class attributes
+    vertex_features = {
+        "single_vertices",
+        "non_manifold_v_vertices",
+        "n_pole_vertices",
+        "e_pole_vertices",
+        "high_pole_vertices",
+    }
+
+    edge_features = {
+        "non_manifold_e_edges",
+        "sharp_edges",
+        "seam_edges",
+        "boundary_edges",
+    }
+
+    face_features = {
+        "tri_faces",
+        "quad_faces",
+        "ngon_faces",
+        "non_planar_faces",
+        "degenerate_faces",
+    }
+
+    # Add batch cache storage
+    _batch_cache = {}
 
     def __init__(self, obj: Object):
-        # logger.debug(f"\n=== Creating MeshAnalyzer for {obj.name} ===")
         if not obj or obj.type != "MESH":
             raise ValueError("Invalid mesh object")
         self.obj = obj
         self.scene_props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
-        self.analyzed_features = {}
-        self.mesh_stats = {"verts": 0, "edges": 0, "faces": 0}  # Add mesh stats
-
-    @classmethod
-    def get_analyzer(cls, obj: Object) -> "MeshAnalyzer":
-        analyzer, features = cls._cache.get(obj.name)
-        if analyzer:
-            # logger.debug(f"Cache hit for {obj.name}")
-            analyzer.analyzed_features = features
-            return analyzer
-
-        analyzer = cls(obj)
-        cls._cache.put(obj.name, analyzer, {})
-        return analyzer
+        self.mesh_stats = {"verts": 0, "edges": 0, "faces": 0}
+        self._shader = gpu.shader.from_builtin("FLAT_COLOR")
 
     def analyze_feature(self, feature: str) -> List:
-        try:
-            if feature in self.analyzed_features:
-                logger.debug(f"Feature cache hit: {feature}")
-                return self.analyzed_features[feature]
-
-            logger.debug(f"Feature cache miss: {feature}")
-            indices = self._analyze_feature_impl(feature)
-            self.analyzed_features[feature] = indices
-            # Update cache with new feature results
-            self._cache.put(self.obj.name, self, self.analyzed_features)
-            return indices
-        except ReferenceError:
-            # Object reference became invalid (e.g. during undo)
-            logger.debug("Object reference invalid - clearing cache")
-            self._cache.clear()
-            return []
+        return self._analyze_feature_impl(feature)
 
     def _analyze_feature_impl(self, feature: str) -> List:
         # Create bmesh and ensure lookup tables
@@ -119,26 +77,21 @@ class MeshAnalyzer:
             "faces": len(bm.faces),
         }
 
-        # Convert to numpy arrays for faster processing
-        vert_cos = np.empty((len(bm.verts), 3), "f")
-        vert_norms = np.empty((len(bm.verts), 3), "f")
-
-        # Get vertex data
-        for i, v in enumerate(bm.verts):
-            vert_cos[i] = v.co
-            vert_norms[i] = v.normal
-
         indices = []
 
-        # Use existing feature checks but with optimized data access
-        if feature in self._cache.vertex_features:
-            self._analyze_vertex_feature(bm, feature, indices)
-        elif feature in self._cache.edge_features:
-            self._analyze_edge_feature(bm, feature, indices)
-        elif feature in self._cache.face_features:
-            self._analyze_face_feature(bm, feature, indices)
+        try:
+            # Use existing feature checks but with optimized data access
+            if feature in self.vertex_features:
+                self._analyze_vertex_feature(bm, feature, indices)
+            elif feature in self.edge_features:
+                self._analyze_edge_feature(bm, feature, indices)
+            elif feature in self.face_features:
+                self._analyze_face_feature(bm, feature, indices)
+        except KeyboardInterrupt:
+            logger.debug("Analysis interrupted")
+        finally:
+            bm.free()
 
-        bm.free()
         return indices
 
     def _analyze_vertex_feature(
@@ -253,30 +206,81 @@ class MeshAnalyzer:
 
         return False
 
+    def get_batch(
+        self, feature: str, color: tuple, primitive_type: str
+    ) -> Optional[gpu.types.GPUBatch]:
+        """Get or create a batch for the given feature"""
+        cache_key = (self.obj.name, feature)
+
+        # Return cached batch if mesh hasn't been modified
+        if cache_key in self._batch_cache:
+            return self._batch_cache[cache_key]
+
+        indices = self.analyze_feature(feature)
+        if not indices:
+            return None
+
+        # Create batch based on primitive type
+        try:
+            mesh = self.obj.data
+            world_matrix = self.obj.matrix_world
+
+            if primitive_type == "POINTS":
+                positions = [world_matrix @ mesh.vertices[i].co for i in indices]
+            elif primitive_type == "LINES":
+                positions = []
+                for i in indices:
+                    edge = mesh.edges[i]
+                    positions.extend(
+                        [
+                            world_matrix @ mesh.vertices[edge.vertices[0]].co,
+                            world_matrix @ mesh.vertices[edge.vertices[1]].co,
+                        ]
+                    )
+            else:  # TRIS
+                positions = []
+                for i in indices:
+                    face = mesh.polygons[i]
+                    # Triangulate the face
+                    if len(face.vertices) > 3:
+                        # Get triangulation from tessface
+                        triangles = []
+                        for tri_idx in range(1, len(face.vertices) - 1):
+                            triangles.extend([0, tri_idx, tri_idx + 1])
+
+                        # Add vertices for each triangle
+                        for tri_idx in range(0, len(triangles), 3):
+                            for offset in range(3):
+                                vert_idx = face.vertices[triangles[tri_idx + offset]]
+                                positions.append(
+                                    world_matrix @ mesh.vertices[vert_idx].co
+                                )
+                    else:
+                        # Handle regular triangles
+                        for vert_idx in face.vertices:
+                            positions.append(world_matrix @ mesh.vertices[vert_idx].co)
+
+            batch = batch_for_shader(
+                self._shader,
+                primitive_type,
+                {"pos": positions, "color": [color] * len(positions)},
+            )
+
+            # Cache the batch
+            self._batch_cache[cache_key] = batch
+            return batch
+
+        except (AttributeError, IndexError, ReferenceError):
+            return None
+
     @classmethod
-    def invalidate_cache(cls, obj_name: str, features: Optional[List[str]] = None):
-        """Invalidate cache for specific object and features"""
-        # Get analyzer from cache
-        analyzer, _ = cls._cache.get(obj_name)
-        if analyzer:
-            if features:
-                # Clear only specified features
-                for feature in features:
-                    if feature in analyzer.analyzed_features:
-                        del analyzer.analyzed_features[feature]
-            else:
-                # Clear all features
-                analyzer.analyzed_features.clear()
+    def clear_cache(cls):
+        """Clear the batch cache"""
+        cls._batch_cache.clear()
 
-            # Update cache
-            cls._cache.put(obj_name, analyzer, analyzer.analyzed_features)
-
-    def get_feature_type(self, feature: str) -> str:
-        """Return the type of feature: 'VERT', 'EDGE', or 'FACE'"""
-        if feature in self._cache.vertex_features:
-            return "VERT"
-        elif feature in self._cache.edge_features:
-            return "EDGE"
-        elif feature in self._cache.face_features:
-            return "FACE"
-        raise ValueError(f"Unknown feature type: {feature}")
+    @classmethod
+    def get_analyzer(cls, obj: Object) -> "MeshAnalyzer":
+        """Get or create a MeshAnalyzer instance for the given object"""
+        if not obj or obj.type != "MESH":
+            raise ValueError("Invalid mesh object")
+        return cls(obj)

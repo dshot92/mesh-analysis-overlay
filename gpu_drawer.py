@@ -28,8 +28,6 @@ class GPUDrawer:
         logger.debug("=== GPUDrawer Initialization ===")
         self.shader = gpu.shader.from_builtin("FLAT_COLOR")
         self.batches = {}
-        self.next_batches = {}
-        self.pending_updates = {}  # Store vertex/color data before creating batch
         self.is_running = False
         self._handle = None
         self._current_analyzer = None
@@ -39,7 +37,8 @@ class GPUDrawer:
         logger.debug(f"- Current analyzer: {self._current_analyzer}")
 
     def _get_analyzer(self, obj: Object) -> MeshAnalyzer:
-        self._current_analyzer = MeshAnalyzer.get_analyzer(obj)
+        # Simply create a new analyzer instance
+        self._current_analyzer = MeshAnalyzer(obj)
         return self._current_analyzer
 
     def update_feature_batch(
@@ -56,12 +55,9 @@ class GPUDrawer:
             obj = self._current_analyzer.obj
             mesh = obj.data
 
-            # Validate mesh data exists and clear cache if invalid
+            # Validate mesh data exists
             if not mesh.vertices or (primitive_type == "TRIS" and not mesh.polygons):
                 self.batches.clear()
-                self.next_batches.clear()
-                self.pending_updates.clear()
-                MeshAnalyzer._cache.clear()  # Clear analyzer cache too
                 return
 
             world_matrix = obj.matrix_world
@@ -74,89 +70,24 @@ class GPUDrawer:
             props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
             offset = props.overlay_offset
 
-            def process_vertex(v_idx):
-                v = mesh.vertices[v_idx]
-                pos = world_matrix @ v.co
-                normal = (world_normal_matrix @ v.normal).normalized()
-                offset_pos = pos + (normal * offset)
-                verts.append(offset_pos)
-                normals.append(normal)
+            batch = batch_for_shader(
+                self.shader,
+                primitive_type,
+                {
+                    "pos": verts,
+                    "color": [color] * len(verts),
+                },
+            )
 
-            if primitive_type == "POINTS":
-                # Handle vertices
-                for idx in indices:
-                    process_vertex(idx)
-
-            elif primitive_type == "LINES":
-                # Handle edges
-                for idx in indices:
-                    e = mesh.edges[idx]
-                    for v_idx in e.vertices:
-                        process_vertex(v_idx)
-
-            elif primitive_type == "TRIS":
-                # Handle faces
-                for idx in indices:
-                    f = mesh.polygons[idx]
-                    verts_count = len(f.vertices)
-
-                    if verts_count == 3:
-                        # Regular triangle
-                        for v_idx in f.vertices:
-                            process_vertex(v_idx)
-                    else:
-                        # Fan triangulation for quads and n-gons
-                        v0 = f.vertices[0]  # First vertex is the fan center
-                        for i in range(1, verts_count - 1):
-                            # Create triangle: v0, vi, vi+1
-                            process_vertex(v0)
-                            process_vertex(f.vertices[i])
-                            process_vertex(f.vertices[i + 1])
-
-            # Append to pending updates
-            if feature not in self.pending_updates:
-                self.pending_updates[feature] = {
-                    "verts": [],
-                    "colors": [],
-                    "primitive_type": primitive_type,
-                }
-
-            self.pending_updates[feature]["verts"].extend(verts)
-            self.pending_updates[feature]["colors"].extend([color] * len(verts))
+            self.batches[feature] = {"batch": batch}
 
         except (AttributeError, IndexError, ReferenceError):
-            # Clear all caches on error
             self.batches.clear()
-            self.next_batches.clear()
-            self.pending_updates.clear()
-            MeshAnalyzer._cache.clear()
             return
 
     def draw(self):
         if not self.is_running:
             return
-
-        # Create batches from pending updates
-        for feature, data in self.pending_updates.items():
-            try:
-                batch = batch_for_shader(
-                    self.shader,
-                    data["primitive_type"],
-                    {
-                        "pos": data["verts"],
-                        "color": data["colors"],
-                    },
-                )
-                self.next_batches[feature] = {"batch": batch}
-            except Exception as e:
-                logger.debug(f"[ERROR] Failed to create batch: {str(e)}")
-
-        self.pending_updates.clear()
-
-        # Swap buffers if we have pending updates
-        if self.next_batches:
-            self.batches = self.next_batches
-            self.next_batches = {}
 
         obj = bpy.context.active_object
         if not obj or obj.type != "MESH":
@@ -173,22 +104,16 @@ class GPUDrawer:
             bpy.context.scene.Mesh_Analysis_Overlay_Properties.overlay_edge_width
         )
 
-        # logger.debug("\n=== Draw Call ===")
-        # logger.debug(f"Object: {obj.name}")
-        # logger.debug(f"Batch count: {len(self.batches)}")
-
         if (
             not self.batches
             or self._current_analyzer is None
             or self._current_analyzer.obj != obj
         ):
-            # logger.debug("Forcing batch update...")
             self.update_batches(obj)
 
-        # logger.debug("Drawing batches...")
+        # Draw batches
         self.shader.bind()
         for feature, batch_data in self.batches.items():
-            # logger.debug(f"- Drawing {feature}")
             batch_data["batch"].draw(self.shader)
 
         # Reset GPU state
@@ -200,22 +125,15 @@ class GPUDrawer:
             if not getattr(props, f"{feature}_enabled", False):
                 continue
 
-            # Use MeshCache's feature sets to validate feature type
+            # Use MeshAnalyzer's feature sets directly
             if (
-                (
-                    primitive_type == "TRIS"
-                    and feature in MeshAnalyzer._cache.face_features
-                )
-                or (
-                    primitive_type == "LINES"
-                    and feature in MeshAnalyzer._cache.edge_features
-                )
+                (primitive_type == "TRIS" and feature in MeshAnalyzer.face_features)
+                or (primitive_type == "LINES" and feature in MeshAnalyzer.edge_features)
                 or (
                     primitive_type == "POINTS"
-                    and feature in MeshAnalyzer._cache.vertex_features
+                    and feature in MeshAnalyzer.vertex_features
                 )
             ):
-
                 indices = analyzer.analyze_feature(feature)
                 if indices:
                     color = tuple(getattr(props, f"{feature}_color"))
@@ -230,9 +148,9 @@ class GPUDrawer:
         self.batches.clear()
 
         feature_configs = [
-            (MeshAnalyzer._cache.face_features, "TRIS"),
-            (MeshAnalyzer._cache.edge_features, "LINES"),
-            (MeshAnalyzer._cache.vertex_features, "POINTS"),
+            (MeshAnalyzer.face_features, "TRIS"),
+            (MeshAnalyzer.edge_features, "LINES"),
+            (MeshAnalyzer.vertex_features, "POINTS"),
         ]
 
         for feature_set, primitive_type in feature_configs:
@@ -287,15 +205,14 @@ class GPUDrawer:
         logger.debug("Cleaning up...")
         self.batches.clear()
         self._current_analyzer = None
-        # MeshAnalyzer._cache.clear()  # Changed from clear_analyzer_cache() to _cache.clear()
         logger.debug("Cleanup complete")
 
     def get_primitive_type(self, feature: str) -> str:
-        if feature in MeshAnalyzer._cache.face_features:
+        if feature in MeshAnalyzer.face_features:
             return "TRIS"
-        elif feature in MeshAnalyzer._cache.edge_features:
+        elif feature in MeshAnalyzer.edge_features:
             return "LINES"
-        elif feature in MeshAnalyzer._cache.vertex_features:
+        elif feature in MeshAnalyzer.vertex_features:
             return "POINTS"
         return None
 
@@ -319,8 +236,6 @@ class GPUDrawer:
             for feature in features:
                 if feature in self.batches:
                     del self.batches[feature]
-                if feature in self.next_batches:
-                    del self.next_batches[feature]
 
                 # Only update the specified feature
                 if getattr(props, f"{feature}_enabled", False):
