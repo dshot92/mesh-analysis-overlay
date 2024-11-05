@@ -2,25 +2,14 @@
 
 import bpy
 import bmesh
-import logging
 import math
 import gpu
 import numpy as np
-from gpu_extras.batch import batch_for_shader
+
 from typing import List, Optional
 from bpy.types import Object
 
 from .feature_data import FEATURE_DATA
-
-logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
-logger.propagate = False
-
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter("%(message)s")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
 
 
 class MeshAnalyzer:
@@ -87,7 +76,7 @@ class MeshAnalyzer:
             elif feature in self.face_features:
                 self._analyze_face_feature(bm, feature, indices)
         except KeyboardInterrupt:
-            logger.debug("Analysis interrupted")
+            pass
         finally:
             bm.free()
 
@@ -96,7 +85,6 @@ class MeshAnalyzer:
     def _analyze_vertex_feature(
         self, bm: bmesh.types.BMesh, feature: str, indices: List
     ):
-        # Convert to numpy arrays for faster processing
         link_edges_count = np.array([len(v.link_edges) for v in bm.verts])
         is_manifold = np.array([v.is_manifold for v in bm.verts])
 
@@ -112,7 +100,6 @@ class MeshAnalyzer:
             indices.extend(np.where(link_edges_count >= 6)[0])
 
     def _analyze_edge_feature(self, bm: bmesh.types.BMesh, feature: str, indices: List):
-        # Convert to numpy arrays for faster processing
         is_manifold = np.array([e.is_manifold for e in bm.edges])
         is_smooth = np.array([e.smooth for e in bm.edges])
         is_seam = np.array([e.seam for e in bm.edges])
@@ -128,7 +115,6 @@ class MeshAnalyzer:
             indices.extend(np.where(is_boundary)[0])
 
     def _analyze_face_feature(self, bm: bmesh.types.BMesh, feature: str, indices: List):
-        # Convert to numpy arrays for faster processing
         vert_counts = np.array([len(f.verts) for f in bm.faces])
 
         if feature == "tri_faces":
@@ -138,12 +124,10 @@ class MeshAnalyzer:
         elif feature == "ngon_faces":
             indices.extend(np.where(vert_counts > 4)[0])
         elif feature == "non_planar_faces":
-            # This check needs to be done per-face due to geometric calculations
             for f in bm.faces:
                 if not self._is_planar(f):
                     indices.append(f.index)
         elif feature == "degenerate_faces":
-            # This check needs to be done per-face due to geometric calculations
             for f in bm.faces:
                 if self._is_degenerate(f):
                     indices.append(f.index)
@@ -152,16 +136,13 @@ class MeshAnalyzer:
         if len(face.verts) <= 3:
             return True
 
-        # Convert vertices to numpy array for faster calculations
         verts = np.array([v.co for v in face.verts])
         normal = np.array(face.normal)
         center = np.mean(verts, axis=0)
 
-        # Calculate vectors from center to vertices
         vectors = verts - center
         vectors /= np.linalg.norm(vectors, axis=1)[:, np.newaxis]
 
-        # Calculate angles with normal
         dots = np.abs(np.dot(vectors, normal))
         angles = np.arccos(np.clip(dots, -1.0, 1.0))
 
@@ -171,16 +152,13 @@ class MeshAnalyzer:
         return np.all(np.abs(angles - math.pi / 2) <= threshold_rad)
 
     def _is_degenerate(self, face: bmesh.types.BMFace) -> bool:
-        # Check for zero area
         if face.calc_area() < 1e-8:
             return True
 
-        # Check for invalid vertex count
         verts = face.verts
         if len(verts) < 3:
             return True
 
-        # Check for duplicate vertices
         unique_verts = set(vert.co.to_tuple() for vert in verts)
         if len(unique_verts) < len(verts):
             return True
@@ -208,11 +186,9 @@ class MeshAnalyzer:
     def get_batch(
         self, feature: str, indices: List[int], primitive_type: str
     ) -> Optional[dict]:
-        """Get or create a batch with positions and normals"""
         if not indices:
             return None
 
-        # Use same cache key format as analyze_feature
         cache_key = (
             self.obj.id_data.id_properties_ensure(),
             feature,
@@ -263,7 +239,6 @@ class MeshAnalyzer:
                             positions.append(world_matrix @ vert.co)
                             normals.append(normal_matrix @ vert.normal)
 
-            # Cache the result
             batch_data = {"positions": positions, "normals": normals}
             self._batch_cache[cache_key] = batch_data
             return batch_data
@@ -274,7 +249,6 @@ class MeshAnalyzer:
 
     @classmethod
     def clear_cache(cls):
-        """Clear all caches"""
         cls._analyzers.clear()
         cls._analysis_cache.clear()
         cls._batch_cache.clear()
@@ -287,7 +261,6 @@ class MeshAnalyzer:
         obj_name = obj.name
         current_time = bpy.context.scene.frame_current
 
-        # Check if analyzer exists and is still valid
         if obj_name in cls._analyzers:
             timestamp, analyzer = cls._analyzers[obj_name]
             if analyzer.obj.id_data:  # Check if object still exists
@@ -316,7 +289,6 @@ class MeshAnalyzer:
 
     @classmethod
     def update_analysis(cls, obj: Object, features=None):
-        """Update analysis and batches for given object"""
         from .operators import drawer  # Import here to avoid circular import
 
         analyzer = cls.get_analyzer(obj)
@@ -332,7 +304,6 @@ class MeshAnalyzer:
             ]:
                 features.extend(feature_set)
 
-        # Clear existing batches for features we're updating
         if drawer:
             for feature in features:
                 if feature in drawer.batches:
@@ -340,12 +311,18 @@ class MeshAnalyzer:
 
         # Only create batches for enabled features
         for feature in features:
-            if getattr(props, f"{feature}_enabled", False):
+            if hasattr(props, f"{feature}_enabled") and getattr(
+                props, f"{feature}_enabled"
+            ):
                 indices = analyzer.analyze_feature(feature)
                 if indices and drawer:
                     primitive_type = cls.get_primitive_type(feature)
                     color = tuple(getattr(props, f"{feature}_color"))
                     drawer.update_feature_batch(feature, indices, color, primitive_type)
+            else:
+                # If feature is disabled, remove its batch if it exists
+                if drawer and feature in drawer.batches:
+                    del drawer.batches[feature]
 
         return analyzer
 
