@@ -29,7 +29,18 @@ class MeshAnalyzer:
             raise ValueError("Invalid mesh object")
         self.obj = obj
         self.scene_props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
-        self.mesh_stats = {"verts": 0, "edges": 0, "faces": 0}
+        self.mesh_stats = {
+            "mesh": {
+                "Vertices": len(obj.data.vertices),
+                "Edges": len(obj.data.edges), 
+                "Faces": len(obj.data.polygons),
+            },
+            "features": {
+                "Vertices": {},
+                "Edges": {},
+                "Faces": {}
+            }
+        }
         self._shader = gpu.shader.from_builtin("FLAT_COLOR")
 
     def analyze_feature(self, feature: str) -> List:
@@ -336,3 +347,29 @@ class MeshAnalyzer:
         elif feature in cls.vertex_features:
             return "POINTS"
         return None
+
+    def update_statistics(self):
+        # Update basic mesh stats
+        self.mesh_stats["mesh"].update({
+            "Vertices": len(self.obj.data.vertices),
+            "Edges": len(self.obj.data.edges),
+            "Faces": len(self.obj.data.polygons),
+        })
+        
+        # Update feature stats
+        self.mesh_stats["features"].update({
+            "Vertices": {
+                feature: len(self.analyze_feature(feature))
+                for feature in self.vertex_features
+            },
+            "Edges": {
+                feature: len(self.analyze_feature(feature))
+                for feature in self.edge_features
+            },
+            "Faces": {
+                feature: len(self.analyze_feature(feature))
+                for feature in self.face_features
+            }
+        })
+        
+        return self.mesh_stats

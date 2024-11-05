@@ -14,36 +14,61 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
     bl_region_type = "UI"
     bl_category = "Mesh Analysis Overlay"
 
-    # @classmethod
-    # def draw_statistics(cls, context, layout):
-    #     obj = context.active_object
-    #     if not obj or obj.type != "MESH":
-    #         return
+    @classmethod
+    def draw_statistics(cls, context, layout):
+        if not drawer.is_running:
+            layout.label(text="Enable overlay to see statistics")
+            return
 
-    #     analyzer = MeshAnalyzer(obj)
-    #     stats = {
-    #         "mesh": {
-    #             "Vertices": len(obj.data.vertices),
-    #             "Edges": len(obj.data.edges),
-    #             "Faces": len(obj.data.polygons),
-    #         },
-    #         "features": {
-    #             "Vertices": {
-    #                 feature: len(analyzer.analyze_feature(feature))
-    #                 for feature in MeshAnalyzer.vertex_features
-    #             },
-    #             "Edges": {
-    #                 feature: len(analyzer.analyze_feature(feature))
-    #                 for feature in MeshAnalyzer.edge_features
-    #             },
-    #             "Faces": {
-    #                 feature: len(analyzer.analyze_feature(feature))
-    #                 for feature in MeshAnalyzer.face_features
-    #             },
-    #         },
-    #     }
+        obj = context.active_object
+        if not obj or obj.type != "MESH":
+            return
 
-    # Draw statistics UI...
+        props = context.scene.Mesh_Analysis_Overlay_Properties
+
+        # Check if any feature is enabled
+        any_enabled = False
+        for category, features in FEATURE_DATA.items():
+            for feature in features:
+                if getattr(props, f"{feature['id']}_enabled", False):
+                    any_enabled = True
+                    break
+            if any_enabled:
+                break
+
+        if not any_enabled:
+            layout.label(text="Select features to see statistics")
+            return
+
+        analyzer = MeshAnalyzer(obj)
+        stats = analyzer.update_statistics()
+
+        # Draw feature statistics following FEATURE_DATA order
+        for category, features in FEATURE_DATA.items():
+            has_enabled_features = False
+            for feature in features:
+                feature_id = feature["id"]
+                if (
+                    getattr(props, f"{feature_id}_enabled", False)
+                    and stats["features"].get(category.title(), {}).get(feature_id, 0)
+                    > 0
+                ):
+                    has_enabled_features = True
+                    break
+
+            if has_enabled_features:
+                box = layout.box()
+                box.label(text=category.title())
+                col = box.column()
+                for feature in features:
+                    feature_id = feature["id"]
+                    count = (
+                        stats["features"].get(category.title(), {}).get(feature_id, 0)
+                    )
+                    if getattr(props, f"{feature_id}_enabled", False):
+                        row = col.row()
+                        row.label(text=f"{feature['label']}:")
+                        row.label(text=str(count))
 
     def draw(self, context):
         layout = self.layout
@@ -95,12 +120,12 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
                         icon="RESTRICT_SELECT_OFF",
                     ).feature = feature["id"]
 
-        # # Statistics panel
-        # header, panel = layout.panel("statistics_panel", default_closed=False)
-        # header.label(text="Statistics")
+        # Statistics panel
+        header, panel = layout.panel("statistics_panel", default_closed=False)
+        header.label(text="Statistics")
 
-        # if panel:
-        #     self.draw_statistics(context, panel)
+        if panel:
+            self.draw_statistics(context, panel)
 
         # Offset settings
         header, panel = layout.panel("panel_settings", default_closed=True)
