@@ -207,70 +207,56 @@ class MeshAnalyzer:
         return False
 
     def get_batch(
-        self, feature: str, color: tuple, primitive_type: str
-    ) -> Optional[gpu.types.GPUBatch]:
-        """Get or create a batch for the given feature"""
-        cache_key = (self.obj.name, feature)
-
-        # Return cached batch if mesh hasn't been modified
-        if cache_key in self._batch_cache:
-            return self._batch_cache[cache_key]
-
-        indices = self.analyze_feature(feature)
+        self, feature: str, indices: List[int], primitive_type: str
+    ) -> Optional[dict]:
+        """Get or create a batch with positions and normals"""
         if not indices:
             return None
 
-        # Create batch based on primitive type
         try:
             mesh = self.obj.data
             world_matrix = self.obj.matrix_world
+            normal_matrix = world_matrix.inverted().transposed().to_3x3()
+
+            positions = []
+            normals = []
 
             if primitive_type == "POINTS":
-                positions = [world_matrix @ mesh.vertices[i].co for i in indices]
+                for i in indices:
+                    vert = mesh.vertices[i]
+                    positions.append(world_matrix @ vert.co)
+                    normals.append(normal_matrix @ vert.normal)
             elif primitive_type == "LINES":
-                positions = []
                 for i in indices:
                     edge = mesh.edges[i]
-                    positions.extend(
-                        [
-                            world_matrix @ mesh.vertices[edge.vertices[0]].co,
-                            world_matrix @ mesh.vertices[edge.vertices[1]].co,
-                        ]
-                    )
+                    for vert_idx in edge.vertices:
+                        vert = mesh.vertices[vert_idx]
+                        positions.append(world_matrix @ vert.co)
+                        normals.append(normal_matrix @ vert.normal)
             else:  # TRIS
-                positions = []
                 for i in indices:
                     face = mesh.polygons[i]
-                    # Triangulate the face
                     if len(face.vertices) > 3:
-                        # Get triangulation from tessface
                         triangles = []
                         for tri_idx in range(1, len(face.vertices) - 1):
                             triangles.extend([0, tri_idx, tri_idx + 1])
 
-                        # Add vertices for each triangle
                         for tri_idx in range(0, len(triangles), 3):
                             for offset in range(3):
                                 vert_idx = face.vertices[triangles[tri_idx + offset]]
-                                positions.append(
-                                    world_matrix @ mesh.vertices[vert_idx].co
-                                )
+                                vert = mesh.vertices[vert_idx]
+                                positions.append(world_matrix @ vert.co)
+                                normals.append(normal_matrix @ vert.normal)
                     else:
-                        # Handle regular triangles
                         for vert_idx in face.vertices:
-                            positions.append(world_matrix @ mesh.vertices[vert_idx].co)
+                            vert = mesh.vertices[vert_idx]
+                            positions.append(world_matrix @ vert.co)
+                            normals.append(normal_matrix @ vert.normal)
 
-            batch = batch_for_shader(
-                self._shader,
-                primitive_type,
-                {"pos": positions, "color": [color] * len(positions)},
-            )
+            return {"positions": positions, "normals": normals}
 
-            # Cache the batch
-            self._batch_cache[cache_key] = batch
-            return batch
-
-        except (AttributeError, IndexError, ReferenceError):
+        except Exception as e:
+            print(f"Error creating batch: {e}")
             return None
 
     @classmethod

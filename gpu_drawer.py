@@ -52,36 +52,53 @@ class GPUDrawer:
             return
 
         try:
-            obj = self._current_analyzer.obj
-            mesh = obj.data
-
-            # Validate mesh data exists
-            if not mesh.vertices or (primitive_type == "TRIS" and not mesh.polygons):
-                self.batches.clear()
+            # Get batch directly from analyzer
+            batch_data = self._current_analyzer.get_batch(
+                feature, indices, primitive_type
+            )
+            if not batch_data:
                 return
 
-            world_matrix = obj.matrix_world
-            world_normal_matrix = world_matrix.inverted().transposed().to_3x3()
+            # Create shader for offset rendering
+            vertex_shader = """
+                uniform mat4 viewMatrix;
+                uniform mat4 windowMatrix;
+                uniform vec3 viewOrigin;
+                uniform float normal_offset;
+                
+                in vec3 pos;
+                in vec3 normal;
+                
+                void main() {
+                    vec3 world_pos = pos;
+                    float offset_amount = distance(world_pos, viewOrigin) * normal_offset;
+                    vec3 offset_pos = world_pos + (normal * offset_amount);
+                    gl_Position = windowMatrix * viewMatrix * vec4(offset_pos, 1.0);
+                }
+            """
 
-            # Calculate vertex positions and normals
-            verts = []
-            normals = []
+            fragment_shader = """
+                uniform vec4 color;
+                out vec4 fragColor;
+                
+                void main() {
+                    fragColor = color;
+                }
+            """
 
-            props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
-            offset = props.overlay_offset
+            shader = gpu.types.GPUShader(vertex_shader, fragment_shader)
 
+            # Create batch with the shader
             batch = batch_for_shader(
-                self.shader,
+                shader,
                 primitive_type,
-                {
-                    "pos": verts,
-                    "color": [color] * len(verts),
-                },
+                {"pos": batch_data["positions"], "normal": batch_data["normals"]},
             )
 
-            self.batches[feature] = {"batch": batch}
+            self.batches[feature] = {"batch": batch, "shader": shader, "color": color}
 
-        except (AttributeError, IndexError, ReferenceError):
+        except (AttributeError, IndexError, ReferenceError) as e:
+            print(f"Error in update_feature_batch: {e}")
             self.batches.clear()
             return
 
@@ -112,9 +129,24 @@ class GPUDrawer:
             self.update_batches(obj)
 
         # Draw batches
-        self.shader.bind()
         for feature, batch_data in self.batches.items():
-            batch_data["batch"].draw(self.shader)
+            shader = batch_data["shader"]
+            shader.bind()
+
+            # Set uniforms for the shader
+            matrix = bpy.context.region_data.perspective_matrix
+            shader.uniform_float("viewMatrix", bpy.context.region_data.view_matrix)
+            shader.uniform_float("windowMatrix", bpy.context.region_data.window_matrix)
+            shader.uniform_float(
+                "viewOrigin", bpy.context.region_data.view_matrix.inverted().translation
+            )
+            shader.uniform_float(
+                "normal_offset",
+                bpy.context.scene.Mesh_Analysis_Overlay_Properties.overlay_offset,
+            )
+            shader.uniform_float("color", batch_data["color"])
+
+            batch_data["batch"].draw(shader)
 
         # Reset GPU state
         gpu.state.blend_set("NONE")
