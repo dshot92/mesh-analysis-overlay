@@ -48,7 +48,9 @@ class MeshAnalyzer:
         "degenerate_faces",
     }
 
-    # Add batch cache storage
+    # Class-level cache for analyzers
+    _analyzers = {}
+    _analysis_cache = {}
     _batch_cache = {}
 
     def __init__(self, obj: Object):
@@ -60,9 +62,25 @@ class MeshAnalyzer:
         self._shader = gpu.shader.from_builtin("FLAT_COLOR")
 
     def analyze_feature(self, feature: str) -> List:
-        return self._analyze_feature_impl(feature)
+        # Validate object still exists
+        if not self.obj or not self.obj.id_data:
+            return []
+
+        # Create cache key using object ID and feature
+        cache_key = (self.obj.id_data.id_properties_ensure(), feature)
+
+        # Check cache first
+        if cache_key in self._analysis_cache:
+            return self._analysis_cache[cache_key]
+
+        # If not in cache, perform analysis
+        indices = self._analyze_feature_impl(feature)
+        self._analysis_cache[cache_key] = indices
+        return indices
 
     def _analyze_feature_impl(self, feature: str) -> List:
+
+        print("test")
         # Create bmesh and ensure lookup tables
         bm = bmesh.new()
         bm.from_mesh(self.obj.data)
@@ -213,6 +231,17 @@ class MeshAnalyzer:
         if not indices:
             return None
 
+        # Use same cache key format as analyze_feature
+        cache_key = (
+            self.obj.id_data.id_properties_ensure(),
+            feature,
+            self.obj.data.id_data.original.id_properties_ensure(),
+        )
+
+        # Check cache first
+        if cache_key in self._batch_cache:
+            return self._batch_cache[cache_key]
+
         try:
             mesh = self.obj.data
             world_matrix = self.obj.matrix_world
@@ -253,7 +282,10 @@ class MeshAnalyzer:
                             positions.append(world_matrix @ vert.co)
                             normals.append(normal_matrix @ vert.normal)
 
-            return {"positions": positions, "normals": normals}
+            # Cache the result
+            batch_data = {"positions": positions, "normals": normals}
+            self._batch_cache[cache_key] = batch_data
+            return batch_data
 
         except Exception as e:
             print(f"Error creating batch: {e}")
@@ -261,12 +293,66 @@ class MeshAnalyzer:
 
     @classmethod
     def clear_cache(cls):
-        """Clear the batch cache"""
+        """Clear both analysis and batch caches"""
+        cls._analysis_cache.clear()
         cls._batch_cache.clear()
 
     @classmethod
     def get_analyzer(cls, obj: Object) -> "MeshAnalyzer":
         """Get or create a MeshAnalyzer instance for the given object"""
-        if not obj or obj.type != "MESH":
+        if not obj or obj.type != "MESH" or not obj.id_data:
             raise ValueError("Invalid mesh object")
-        return cls(obj)
+
+        # Use object ID as key instead of name
+        obj_id = obj.id_data.id_properties_ensure()
+        if obj_id not in cls._analyzers:
+            cls._analyzers[obj_id] = cls(obj)
+        return cls._analyzers[obj_id]
+
+    @classmethod
+    def update_analysis(cls, obj: Object, features=None):
+        """Update analysis and batches for given object"""
+        from .operators import drawer  # Import here to avoid circular import
+
+        analyzer = cls.get_analyzer(obj)
+        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+
+        if not features:
+            # Update all enabled features
+            features = []
+            for feature_set in [
+                cls.vertex_features,
+                cls.edge_features,
+                cls.face_features,
+            ]:
+                for feature in feature_set:
+                    if getattr(props, f"{feature}_enabled", False):
+                        features.append(feature)
+
+        # Clear existing batches for features we're updating
+        if drawer:
+            for feature in features:
+                if feature in drawer.batches:
+                    del drawer.batches[feature]
+
+        # Analyze each feature and create batches
+        for feature in features:
+            if getattr(props, f"{feature}_enabled", False):
+                indices = analyzer.analyze_feature(feature)
+                if indices and drawer:
+                    primitive_type = cls.get_primitive_type(feature)
+                    color = tuple(getattr(props, f"{feature}_color"))
+                    drawer.update_feature_batch(feature, indices, color, primitive_type)
+
+        return analyzer
+
+    @classmethod
+    def get_primitive_type(cls, feature: str) -> str:
+        """Get the primitive type for a given feature"""
+        if feature in cls.face_features:
+            return "TRIS"
+        elif feature in cls.edge_features:
+            return "LINES"
+        elif feature in cls.vertex_features:
+            return "POINTS"
+        return None

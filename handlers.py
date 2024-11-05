@@ -30,7 +30,10 @@ def update_analysis_overlay(scene, depsgraph):
         if isinstance(update.id, bpy.types.Object) and update.id.type == "MESH":
             obj = update.id
             if update.is_updated_geometry:
-                drawer.update_batches(obj)
+                # Clear caches when geometry changes
+                MeshAnalyzer._analysis_cache.clear()
+                MeshAnalyzer._batch_cache.clear()
+                MeshAnalyzer.update_analysis(obj)
 
 
 # Used as a callback for property updates in properties.py
@@ -41,7 +44,8 @@ def update_overlay_enabled_toggles(self, context):
     if context and context.active_object:
         obj = context.active_object
         if obj and obj.type == "MESH":
-            drawer.update_batches(obj)
+            # Don't clear cache, just update the analysis
+            MeshAnalyzer.update_analysis(obj)
 
 
 # Used as a callback for offset property updates in properties.py
@@ -53,7 +57,7 @@ def update_overlay_offset(self, context):
     if context and context.active_object:
         obj = context.active_object
         if obj and obj.type == "MESH":
-            drawer.update_batches(obj)
+            MeshAnalyzer.update_analysis(obj)
     # if context and context.area:
     #     context.area.tag_redraw()
 
@@ -67,7 +71,7 @@ def update_non_planar_threshold(self, context):
     if context and context.active_object:
         obj = context.active_object
         if obj and obj.type == "MESH":
-            drawer.update_batches(obj, ["non_planar_faces"])
+            MeshAnalyzer.update_analysis(obj, ["non_planar_faces"])
     # if context and context.area:
     #     context.area.tag_redraw()
 
@@ -89,7 +93,7 @@ def handle_edit_mode_changes(scene, depsgraph):
             continue
 
         if drawer and drawer.is_running:
-            drawer.update_batches(obj)
+            MeshAnalyzer.update_analysis(obj)
 
 
 def register():

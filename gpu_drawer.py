@@ -30,16 +30,6 @@ class GPUDrawer:
         self.batches = {}
         self.is_running = False
         self._handle = None
-        self._current_analyzer = None
-        logger.debug(f"Initial state:")
-        logger.debug(f"- Is running: {self.is_running}")
-        logger.debug(f"- Handle: {self._handle}")
-        logger.debug(f"- Current analyzer: {self._current_analyzer}")
-
-    def _get_analyzer(self, obj: Object) -> MeshAnalyzer:
-        # Simply create a new analyzer instance
-        self._current_analyzer = MeshAnalyzer(obj)
-        return self._current_analyzer
 
     def update_feature_batch(
         self,
@@ -52,48 +42,93 @@ class GPUDrawer:
             return
 
         try:
-            # Get batch directly from analyzer
-            batch_data = self._current_analyzer.get_batch(
-                feature, indices, primitive_type
-            )
+            obj = bpy.context.active_object
+            if not obj or obj.type != "MESH":
+                return
+
+            analyzer = MeshAnalyzer.get_analyzer(obj)
+            batch_data = analyzer.get_batch(feature, indices, primitive_type)
             if not batch_data:
                 return
 
-            # Create shader for offset rendering
-            vertex_shader = """
-                uniform mat4 viewMatrix;
-                uniform mat4 windowMatrix;
-                uniform vec3 viewOrigin;
-                uniform float normal_offset;
-                
-                in vec3 pos;
-                in vec3 normal;
-                
-                void main() {
-                    vec3 world_pos = pos;
-                    float offset_amount = distance(world_pos, viewOrigin) * normal_offset;
-                    vec3 offset_pos = world_pos + (normal * offset_amount);
-                    gl_Position = windowMatrix * viewMatrix * vec4(offset_pos, 1.0);
-                }
-            """
+            # Use different shaders based on primitive type
+            if primitive_type == "POINTS":
+                vertex_shader = """
+                    uniform mat4 viewMatrix;
+                    uniform mat4 windowMatrix;
+                    uniform vec3 viewOrigin;
+                    uniform float normal_offset;
+                    
+                    in vec3 pos;
+                    in vec3 normal;
 
-            fragment_shader = """
-                uniform vec4 color;
-                out vec4 fragColor;
-                
-                void main() {
-                    fragColor = color;
-                }
-            """
+                    void main()
+                    {
+                        vec3 world_pos = pos;
+                        float offset_amount = distance(world_pos, viewOrigin) * normal_offset;
+                        vec3 offset_pos = world_pos + (normal * offset_amount);
+                        gl_Position = windowMatrix * viewMatrix * vec4(offset_pos, 1.0);
+                    }
+                """
 
-            shader = gpu.types.GPUShader(vertex_shader, fragment_shader)
+                fragment_shader = """
+                    uniform vec4 color;
+                    out vec4 fragColor;
 
-            # Create batch with the shader
-            batch = batch_for_shader(
-                shader,
-                primitive_type,
-                {"pos": batch_data["positions"], "normal": batch_data["normals"]},
-            )
+                    void main()
+                    {
+                        vec2 center = vec2(0.5, 0.5);
+                        float radius = 0.5;
+                        vec2 position = gl_PointCoord - center;
+                        float distance = length(position);
+                        
+                        if (distance > radius)
+                        {
+                            discard;
+                        }
+                        
+                        fragColor = color;
+                    }
+                """
+                shader = gpu.types.GPUShader(vertex_shader, fragment_shader)
+                batch = batch_for_shader(
+                    shader,
+                    primitive_type,
+                    {"pos": batch_data["positions"], "normal": batch_data["normals"]},
+                )
+            else:
+                # Original shader for edges and faces
+                vertex_shader = """
+                    uniform mat4 viewMatrix;
+                    uniform mat4 windowMatrix;
+                    uniform vec3 viewOrigin;
+                    uniform float normal_offset;
+                    
+                    in vec3 pos;
+                    in vec3 normal;
+                    
+                    void main() {
+                        vec3 world_pos = pos;
+                        float offset_amount = distance(world_pos, viewOrigin) * normal_offset;
+                        vec3 offset_pos = world_pos + (normal * offset_amount);
+                        gl_Position = windowMatrix * viewMatrix * vec4(offset_pos, 1.0);
+                    }
+                """
+
+                fragment_shader = """
+                    uniform vec4 color;
+                    out vec4 fragColor;
+                    
+                    void main() {
+                        fragColor = color;
+                    }
+                """
+                shader = gpu.types.GPUShader(vertex_shader, fragment_shader)
+                batch = batch_for_shader(
+                    shader,
+                    primitive_type,
+                    {"pos": batch_data["positions"], "normal": batch_data["normals"]},
+                )
 
             self.batches[feature] = {"batch": batch, "shader": shader, "color": color}
 
@@ -121,86 +156,47 @@ class GPUDrawer:
             bpy.context.scene.Mesh_Analysis_Overlay_Properties.overlay_edge_width
         )
 
-        if (
-            not self.batches
-            or self._current_analyzer is None
-            or self._current_analyzer.obj != obj
-        ):
-            self.update_batches(obj)
-
-        # Draw batches
+        # Draw existing batches
         for feature, batch_data in self.batches.items():
             shader = batch_data["shader"]
             shader.bind()
 
-            # Set uniforms for the shader
-            matrix = bpy.context.region_data.perspective_matrix
-            shader.uniform_float("viewMatrix", bpy.context.region_data.view_matrix)
-            shader.uniform_float("windowMatrix", bpy.context.region_data.window_matrix)
-            shader.uniform_float(
-                "viewOrigin", bpy.context.region_data.view_matrix.inverted().translation
-            )
-            shader.uniform_float(
-                "normal_offset",
-                bpy.context.scene.Mesh_Analysis_Overlay_Properties.overlay_offset,
-            )
-            shader.uniform_float("color", batch_data["color"])
+            # Set uniforms based on primitive type
+            if feature in MeshAnalyzer.vertex_features:
+                # For vertex shader (points)
+                shader.uniform_float("viewMatrix", bpy.context.region_data.view_matrix)
+                shader.uniform_float(
+                    "windowMatrix", bpy.context.region_data.window_matrix
+                )
+                shader.uniform_float(
+                    "viewOrigin",
+                    bpy.context.region_data.view_matrix.inverted().translation,
+                )
+                shader.uniform_float(
+                    "normal_offset",
+                    bpy.context.scene.Mesh_Analysis_Overlay_Properties.overlay_offset,
+                )
+            else:
+                # For edge/face shader
+                shader.uniform_float("viewMatrix", bpy.context.region_data.view_matrix)
+                shader.uniform_float(
+                    "windowMatrix", bpy.context.region_data.window_matrix
+                )
+                shader.uniform_float(
+                    "viewOrigin",
+                    bpy.context.region_data.view_matrix.inverted().translation,
+                )
+                shader.uniform_float(
+                    "normal_offset",
+                    bpy.context.scene.Mesh_Analysis_Overlay_Properties.overlay_offset,
+                )
 
+            shader.uniform_float("color", batch_data["color"])
             batch_data["batch"].draw(shader)
 
         # Reset GPU state
         gpu.state.blend_set("NONE")
         gpu.state.face_culling_set("NONE")
-
-    def _update_feature_set(self, feature_set, primitive_type, props, analyzer):
-        for feature in feature_set:
-            if not getattr(props, f"{feature}_enabled", False):
-                continue
-
-            # Use MeshAnalyzer's feature sets directly
-            if (
-                (primitive_type == "TRIS" and feature in MeshAnalyzer.face_features)
-                or (primitive_type == "LINES" and feature in MeshAnalyzer.edge_features)
-                or (
-                    primitive_type == "POINTS"
-                    and feature in MeshAnalyzer.vertex_features
-                )
-            ):
-                indices = analyzer.analyze_feature(feature)
-                if indices:
-                    color = tuple(getattr(props, f"{feature}_color"))
-                    self.update_feature_batch(feature, indices, color, primitive_type)
-
-    def _update_all_batches(self, obj):
-        if not obj or not self.is_running:
-            return
-
-        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
-        analyzer = self._get_analyzer(obj)
-        self.batches.clear()
-
-        feature_configs = [
-            (MeshAnalyzer.face_features, "TRIS"),
-            (MeshAnalyzer.edge_features, "LINES"),
-            (MeshAnalyzer.vertex_features, "POINTS"),
-        ]
-
-        for feature_set, primitive_type in feature_configs:
-            self._update_feature_set(feature_set, primitive_type, props, analyzer)
-
-    def _handle_mode_change(self, obj):
-        if not obj or not self.is_running:
-            return False
-
-        # Force update when:
-        # 1. Exiting edit mode
-        # 2. Entering object mode
-        # 3. Switching between edit/object modes
-        if obj.mode in {"OBJECT", "EDIT"}:
-            logger.debug(f"[DEBUG] Mode change detected: {obj.mode}")
-            self._update_all_batches(obj)
-            return True
-        return False
 
     def start(self):
         logger.debug("\n=== Starting GPUDrawer ===")
@@ -211,11 +207,6 @@ class GPUDrawer:
                 self.draw, (), "WINDOW", "POST_VIEW"
             )
             logger.debug(f"Draw handler added: {self._handle}")
-
-        obj = bpy.context.active_object
-        if obj and obj.type == "MESH":
-            logger.debug(f"Initial update for {obj.name}")
-            self.update_batches(obj)
 
     def stop(self):
         logger.debug("\n=== Stopping GPUDrawer ===")
@@ -236,7 +227,6 @@ class GPUDrawer:
 
         logger.debug("Cleaning up...")
         self.batches.clear()
-        self._current_analyzer = None
         logger.debug("Cleanup complete")
 
     def get_primitive_type(self, feature: str) -> str:
@@ -248,33 +238,33 @@ class GPUDrawer:
             return "POINTS"
         return None
 
-    def update_batches(self, obj, features=None):
-        logger.debug("\n=== Update Batches ===")
-        logger.debug(f"Object: {obj.name if obj else 'None'}")
-        logger.debug(f"Updating features: {features if features else 'all'}")
+    # def update_batches(self, obj, features=None):
+    #     logger.debug("\n=== Update Batches ===")
+    #     logger.debug(f"Object: {obj.name if obj else 'None'}")
+    #     logger.debug(f"Updating features: {features if features else 'all'}")
 
-        if not obj or not self.is_running:
-            logger.debug("× Skipping update - invalid state")
-            return
+    #     if not obj or not self.is_running:
+    #         logger.debug("× Skipping update - invalid state")
+    #         return
 
-        analyzer = self._get_analyzer(obj)
-        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+    #     analyzer = self._get_analyzer(obj)
+    #     props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
 
-        if not features:
-            # Full update - clear all batches and update everything
-            self._update_all_batches(obj)
-        else:
-            # Clear only specified features
-            for feature in features:
-                if feature in self.batches:
-                    del self.batches[feature]
+    #     if not features:
+    #         # Full update - clear all batches and update everything
+    #         self._update_all_batches(obj)
+    #     else:
+    #         # Clear only specified features
+    #         for feature in features:
+    #             if feature in self.batches:
+    #                 del self.batches[feature]
 
-                # Only update the specified feature
-                if getattr(props, f"{feature}_enabled", False):
-                    indices = analyzer.analyze_feature(feature)
-                    if indices:
-                        color = tuple(getattr(props, f"{feature}_color"))
-                        primitive_type = self.get_primitive_type(feature)
-                        self.update_feature_batch(
-                            feature, indices, color, primitive_type
-                        )
+    #             # Only update the specified feature
+    #             if getattr(props, f"{feature}_enabled", False):
+    #                 indices = analyzer.analyze_feature(feature)
+    #                 if indices:
+    #                     color = tuple(getattr(props, f"{feature}_color"))
+    #                     primitive_type = self.get_primitive_type(feature)
+    #                     self.update_feature_batch(
+    #                         feature, indices, color, primitive_type
+    #                     )
