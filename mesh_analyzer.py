@@ -21,24 +21,26 @@ class MeshAnalyzer:
 
     # Class-level cache for analyzers
     _analyzers = {}  # {obj_name: analyzer}
-    _analyzer_queue = deque(maxlen=5)  # Tracks order of analyzers
+    _analyzer_queue = deque(maxlen=2)  # Tracks order of analyzers
     _analysis_cache = {}  # {(obj_name, feature): indices}
     _batch_cache = {}  # {(obj_name, feature): batch_data}
+    _mesh_stats_cache = {}  # {obj_name: stats} - New cache for mesh stats
 
     def __init__(self, obj: Object):
         if not obj or obj.type != "MESH":
             raise ValueError("Invalid mesh object")
         self.obj = obj
         self.scene_props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
-        self.mesh_stats = {
-            "mesh": {
-                "Vertices": len(obj.data.vertices),
-                "Edges": len(obj.data.edges),
-                "Faces": len(obj.data.polygons),
-            },
-            "features": {"Vertices": {}, "Edges": {}, "Faces": {}},
-        }
         self._shader = gpu.shader.from_builtin("FLAT_COLOR")
+        # Update mesh stats in class cache
+        self._update_mesh_stats()
+
+    def _update_mesh_stats(self):
+        self.__class__._mesh_stats_cache[self.obj.name] = {
+            "verts": len(self.obj.data.vertices),
+            "edges": len(self.obj.data.edges),
+            "faces": len(self.obj.data.polygons),
+        }
 
     def analyze_feature(self, feature: str) -> List:
         if not self.obj or not self.obj.id_data:
@@ -257,6 +259,7 @@ class MeshAnalyzer:
         cls._analyzers.clear()
         cls._analysis_cache.clear()
         cls._batch_cache.clear()
+        cls._mesh_stats_cache.clear()  # Clear mesh stats cache
 
     @classmethod
     def get_analyzer(cls, obj: Object):
@@ -268,22 +271,20 @@ class MeshAnalyzer:
         # Return existing analyzer if valid and mesh hasn't changed
         if obj_name in cls._analyzers:
             analyzer = cls._analyzers[obj_name]
-            if analyzer.obj.id_data:  # Check if object still exists
+            try:
+                # Try to access object data - will fail if object is deleted
+                analyzer.obj.data
                 # Check if mesh stats have changed
                 current_stats = {
                     "verts": len(obj.data.vertices),
                     "edges": len(obj.data.edges),
                     "faces": len(obj.data.polygons),
                 }
-                if analyzer.mesh_stats == current_stats:
+                if cls._mesh_stats_cache.get(obj_name) == current_stats:
                     return analyzer
-                # Mesh has changed, clear caches for this object
-                cls._analysis_cache = {
-                    k: v for k, v in cls._analysis_cache.items() if k[0] != obj_name
-                }
-                cls._batch_cache = {
-                    k: v for k, v in cls._batch_cache.items() if k[0] != obj_name
-                }
+            except ReferenceError:
+                # Object has been deleted, clear caches
+                cls._clear_cache_for_object(obj_name)
 
         # Create new analyzer
         analyzer = cls(obj)
@@ -305,46 +306,58 @@ class MeshAnalyzer:
 
         cls._analyzers[obj_name] = analyzer
         cls._analyzer_queue.append(obj_name)
+
+        # Only clean up if queue is at capacity
+        if len(cls._analyzer_queue) > cls._analyzer_queue.maxlen:
+            oldest_name = cls._analyzer_queue[0]
+            cls._analyzers.pop(oldest_name, None)
+            cls._clear_cache_for_object(oldest_name)
+
         return analyzer
 
     @classmethod
     def update_analysis(cls, obj: Object, features=None):
-        from .operators import drawer  # Import here to avoid circular import
+        from .operators import drawer
 
         analyzer = cls.get_analyzer(obj)
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
 
-        if not features:
-            # Update all features (enabled or not)
-            features = []
-            for feature_set in [
-                cls.vertex_features,
-                cls.edge_features,
-                cls.face_features,
-            ]:
-                features.extend(feature_set)
+        # Only analyze enabled features
+        enabled_features = []
+        for feature_set in [cls.vertex_features, cls.edge_features, cls.face_features]:
+            for feature in feature_set:
+                if hasattr(props, f"{feature}_enabled") and getattr(
+                    props, f"{feature}_enabled"
+                ):
+                    enabled_features.append(feature)
+
+        features_to_analyze = features if features else enabled_features
 
         if drawer:
-            for feature in features:
+            for feature in features_to_analyze:
                 if feature in drawer.batches:
                     del drawer.batches[feature]
 
-        # Only create batches for enabled features
-        for feature in features:
-            if hasattr(props, f"{feature}_enabled") and getattr(
-                props, f"{feature}_enabled"
-            ):
-                indices = analyzer.analyze_feature(feature)
-                if indices and drawer:
-                    primitive_type = cls.get_primitive_type(feature)
-                    color = tuple(getattr(props, f"{feature}_color"))
-                    drawer.update_feature_batch(feature, indices, color, primitive_type)
-            else:
-                # If feature is disabled, remove its batch if it exists
-                if drawer and feature in drawer.batches:
-                    del drawer.batches[feature]
+        # Only analyze and create batches for enabled features
+        for feature in features_to_analyze:
+            indices = analyzer.analyze_feature(feature)
+            if indices and drawer:
+                primitive_type = cls.get_primitive_type(feature)
+                color = tuple(getattr(props, f"{feature}_color"))
+                drawer.update_feature_batch(feature, indices, color, primitive_type)
 
         return analyzer
+
+    @classmethod
+    def _clear_cache_for_object(cls, obj_name):
+        """Helper method to clear caches for a specific object"""
+        cls._analysis_cache = {
+            k: v for k, v in cls._analysis_cache.items() if k[0] != obj_name
+        }
+        cls._batch_cache = {
+            k: v for k, v in cls._batch_cache.items() if k[0] != obj_name
+        }
+        cls._mesh_stats_cache.pop(obj_name, None)  # Remove mesh stats for object
 
     @classmethod
     def get_primitive_type(cls, feature: str) -> str:
