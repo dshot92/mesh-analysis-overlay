@@ -18,22 +18,22 @@ if not logger.handlers:
     logger.addHandler(handler)
 
 
-# Used as a callback for depsgraph updates
-@persistent
-def update_analysis_overlay(scene, depsgraph):
-    if bpy.context.mode == "EDIT_MESH":
-        return
-    if not drawer or not drawer.is_running:
-        return
+# # Used as a callback for depsgraph updates
+# @persistent
+# def update_analysis_overlay(scene, depsgraph):
+#     if bpy.context.mode == "EDIT_MESH":
+#         return
+#     if not drawer or not drawer.is_running:
+#         return
 
-    for update in depsgraph.updates:
-        if isinstance(update.id, bpy.types.Object) and update.id.type == "MESH":
-            obj = update.id
-            if update.is_updated_geometry:
-                # Clear caches when geometry changes
-                MeshAnalyzer._analysis_cache.clear()
-                MeshAnalyzer._batch_cache.clear()
-                MeshAnalyzer.update_analysis(obj)
+#     for update in depsgraph.updates:
+#         if isinstance(update.id, bpy.types.Object) and update.id.type == "MESH":
+#             obj = update.id
+#             if update.is_updated_geometry:
+#                 # Clear caches when geometry changes
+#                 MeshAnalyzer._analysis_cache.clear()
+#                 MeshAnalyzer._batch_cache.clear()
+#                 MeshAnalyzer.update_analysis(obj)
 
 
 # Used as a callback for property updates in properties.py
@@ -45,7 +45,8 @@ def update_overlay_enabled_toggles(self, context):
         obj = context.active_object
         if obj and obj.type == "MESH":
             # Don't clear cache, just update the analysis
-            MeshAnalyzer.update_analysis(obj)
+            context.area.tag_redraw()
+            # MeshAnalyzer.update_analysis(obj)
 
 
 # Used as a callback for offset property updates in properties.py
@@ -73,24 +74,24 @@ def update_non_planar_threshold(self, context):
             MeshAnalyzer.update_analysis(obj, ["non_planar_faces"])
 
 
-@persistent
-def handle_edit_mode_changes(scene, depsgraph):
-    """Handler for when the edit mode changes
-    Avoids index error when trying to select deleted element before a refresh
-    """
-    if bpy.context.mode != "EDIT_MESH":
-        return
+# @persistent
+# def handle_edit_mode_changes(scene, depsgraph):
+#     """Handler for when the edit mode changes
+#     Avoids index error when trying to select deleted element before a refresh
+#     """
+#     if bpy.context.mode != "EDIT_MESH":
+#         return
 
-    for update in depsgraph.updates:
-        if not isinstance(update.id, bpy.types.Object) or update.id.type != "MESH":
-            continue
+#     for update in depsgraph.updates:
+#         if not isinstance(update.id, bpy.types.Object) or update.id.type != "MESH":
+#             continue
 
-        obj = update.id
-        if not obj or not update.is_updated_geometry:
-            continue
+#         obj = update.id
+#         if not obj or not update.is_updated_geometry:
+#             continue
 
-        if drawer and drawer.is_running:
-            MeshAnalyzer.update_analysis(obj)
+#         if drawer and drawer.is_running:
+#             MeshAnalyzer.update_analysis(obj)
 
 
 _last_active_object = None
@@ -113,13 +114,13 @@ def check_active_object_change(scene):
 
 def register():
     logger.debug("\n=== Registering Handlers ===")
-    bpy.app.handlers.depsgraph_update_post.append(update_analysis_overlay)
+    # bpy.app.handlers.depsgraph_update_post.append(update_analysis_overlay)
     bpy.app.handlers.depsgraph_update_post.append(check_active_object_change)
 
 
 def unregister():
     logger.debug("\n=== Unregistering Handlers ===")
-    if update_analysis_overlay in bpy.app.handlers.depsgraph_update_post:
-        bpy.app.handlers.depsgraph_update_post.remove(update_analysis_overlay)
+    # if update_analysis_overlay in bpy.app.handlers.depsgraph_update_post:
+    #     bpy.app.handlers.depsgraph_update_post.remove(update_analysis_overlay)
     if check_active_object_change in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(check_active_object_change)

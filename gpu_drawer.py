@@ -237,34 +237,3 @@ class GPUDrawer:
         elif feature in MeshAnalyzer.vertex_features:
             return "POINTS"
         return None
-
-    # def update_batches(self, obj, features=None):
-    #     logger.debug("\n=== Update Batches ===")
-    #     logger.debug(f"Object: {obj.name if obj else 'None'}")
-    #     logger.debug(f"Updating features: {features if features else 'all'}")
-
-    #     if not obj or not self.is_running:
-    #         logger.debug("× Skipping update - invalid state")
-    #         return
-
-    #     analyzer = self._get_analyzer(obj)
-    #     props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
-
-    #     if not features:
-    #         # Full update - clear all batches and update everything
-    #         self._update_all_batches(obj)
-    #     else:
-    #         # Clear only specified features
-    #         for feature in features:
-    #             if feature in self.batches:
-    #                 del self.batches[feature]
-
-    #             # Only update the specified feature
-    #             if getattr(props, f"{feature}_enabled", False):
-    #                 indices = analyzer.analyze_feature(feature)
-    #                 if indices:
-    #                     color = tuple(getattr(props, f"{feature}_color"))
-    #                     primitive_type = self.get_primitive_type(feature)
-    #                     self.update_feature_batch(
-    #                         feature, indices, color, primitive_type
-    #                     )

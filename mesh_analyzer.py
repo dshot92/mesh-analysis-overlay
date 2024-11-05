@@ -49,9 +49,10 @@ class MeshAnalyzer:
     }
 
     # Class-level cache for analyzers
-    _analyzers = {}
+    _analyzers = {}  # Will store {obj_name: (timestamp, analyzer)}
     _analysis_cache = {}
     _batch_cache = {}
+    _max_queue_size = 2
 
     def __init__(self, obj: Object):
         if not obj or obj.type != "MESH":
@@ -77,8 +78,10 @@ class MeshAnalyzer:
             if feature_data:
                 break
 
+        # Create a unique cache key that includes object data
         cache_key = (
-            self.obj.id_data.id_properties_ensure(),
+            self.obj.name,  # Use object name instead of id_properties
+            self.obj.data.id_data.original.id_properties_ensure(),  # Include mesh data state
             feature,
             feature_category,
         )
@@ -307,21 +310,37 @@ class MeshAnalyzer:
 
     @classmethod
     def clear_cache(cls):
-        """Clear both analysis and batch caches"""
+        """Clear all caches"""
+        cls._analyzers.clear()
         cls._analysis_cache.clear()
         cls._batch_cache.clear()
 
     @classmethod
     def get_analyzer(cls, obj: Object) -> "MeshAnalyzer":
         """Get or create a MeshAnalyzer instance for the given object"""
-        if not obj or obj.type != "MESH" or not obj.id_data:
+        if not obj or obj.type != "MESH":
             raise ValueError("Invalid mesh object")
 
-        # Use object ID as key instead of name
-        obj_id = obj.id_data.id_properties_ensure()
-        if obj_id not in cls._analyzers:
-            cls._analyzers[obj_id] = cls(obj)
-        return cls._analyzers[obj_id]
+        obj_name = obj.name
+        current_time = bpy.context.scene.frame_current  # Using frame as timestamp
+
+        # Check if analyzer exists and is still valid
+        if obj_name in cls._analyzers:
+            timestamp, analyzer = cls._analyzers[obj_name]
+            if analyzer.obj.id_data:  # Check if object still exists
+                cls._analyzers[obj_name] = (current_time, analyzer)  # Update timestamp
+                return analyzer
+
+        # Create new analyzer
+        analyzer = cls(obj)
+
+        # Add to queue, remove oldest if needed
+        if len(cls._analyzers) >= cls._max_queue_size:
+            oldest_name = min(cls._analyzers.keys(), key=lambda k: cls._analyzers[k][0])
+            del cls._analyzers[oldest_name]
+
+        cls._analyzers[obj_name] = (current_time, analyzer)
+        return analyzer
 
     @classmethod
     def update_analysis(cls, obj: Object, features=None):
@@ -332,16 +351,14 @@ class MeshAnalyzer:
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
 
         if not features:
-            # Update all enabled features
+            # Update all features (enabled or not)
             features = []
             for feature_set in [
                 cls.vertex_features,
                 cls.edge_features,
                 cls.face_features,
             ]:
-                for feature in feature_set:
-                    if getattr(props, f"{feature}_enabled", False):
-                        features.append(feature)
+                features.extend(feature_set)
 
         # Clear existing batches for features we're updating
         if drawer:
@@ -349,7 +366,7 @@ class MeshAnalyzer:
                 if feature in drawer.batches:
                     del drawer.batches[feature]
 
-        # Analyze each feature and create batches
+        # Only create batches for enabled features
         for feature in features:
             if getattr(props, f"{feature}_enabled", False):
                 indices = analyzer.analyze_feature(feature)
