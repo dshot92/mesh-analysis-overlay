@@ -97,6 +97,8 @@ class Select_Feature_Elements(bpy.types.Operator):
                 if idx < len(bm.verts):
                     bm.verts[idx].select = self.mode != "SUB"
 
+        bmesh.update_edit_mesh(mesh)
+
         return {"FINISHED"}
 
 
