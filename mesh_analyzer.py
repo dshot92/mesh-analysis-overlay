@@ -75,18 +75,14 @@ class MeshAnalyzer:
 
         indices = []
 
-        try:
-            # Use existing feature checks but with optimized data access
-            if feature in self.vertex_features:
-                self._analyze_vertex_feature(bm, feature, indices)
-            elif feature in self.edge_features:
-                self._analyze_edge_feature(bm, feature, indices)
-            elif feature in self.face_features:
-                self._analyze_face_feature(bm, feature, indices)
-        except KeyboardInterrupt:
-            pass
-        finally:
-            bm.free()
+        # Use existing feature checks but with optimized data access
+        if feature in self.vertex_features:
+            self._analyze_vertex_feature(bm, feature, indices)
+        elif feature in self.edge_features:
+            self._analyze_edge_feature(bm, feature, indices)
+        elif feature in self.face_features:
+            self._analyze_face_feature(bm, feature, indices)
+        bm.free()
 
         return indices
 
@@ -268,11 +264,25 @@ class MeshAnalyzer:
 
         obj_name = obj.name
 
-        # Return existing analyzer if valid
+        # Return existing analyzer if valid and mesh hasn't changed
         if obj_name in cls._analyzers:
             analyzer = cls._analyzers[obj_name]
             if analyzer.obj.id_data:  # Check if object still exists
-                return analyzer
+                # Check if mesh stats have changed
+                current_stats = {
+                    "verts": len(obj.data.vertices),
+                    "edges": len(obj.data.edges),
+                    "faces": len(obj.data.polygons),
+                }
+                if analyzer.mesh_stats == current_stats:
+                    return analyzer
+                # Mesh has changed, clear caches for this object
+                cls._analysis_cache = {
+                    k: v for k, v in cls._analysis_cache.items() if k[0] != obj_name
+                }
+                cls._batch_cache = {
+                    k: v for k, v in cls._batch_cache.items() if k[0] != obj_name
+                }
 
         # Create new analyzer
         analyzer = cls(obj)
