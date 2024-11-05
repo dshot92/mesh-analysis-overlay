@@ -75,13 +75,19 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         props = context.scene.Mesh_Analysis_Overlay_Properties
         factor = 0.85
 
-        # Toggle button for overlay
-        row = layout.row()
-        row.operator(
+        # Toggle and update buttons side by side
+        row = layout.row(align=True)
+        split = row.split(factor=0.75)
+        split.operator(
             "view3d.mesh_analysis_overlay",
-            text="Show Mesh Overlay",
+            text="Show Overlay",
             icon="OVERLAY",
             depress=drawer.is_running,
+        )
+        split.operator(
+            "view3d.update_mesh_analysis_overlay",
+            text="",
+            icon="FILE_REFRESH",
         )
 
         # Info text

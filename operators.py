@@ -100,9 +100,46 @@ class Select_Feature_Elements(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class Update_Mesh_Analysis_Overlay(bpy.types.Operator):
+    bl_idname = "view3d.update_mesh_analysis_overlay"
+    bl_label = "Update Mesh Analysis Overlay"
+    bl_description = "Refresh the Mesh Analysis Overlay data"
+
+    @classmethod
+    def poll(cls, context):
+        if not context.active_object:
+            cls.poll_message_set("No active object selected")
+            return False
+
+        if context.active_object.type != "MESH":
+            cls.poll_message_set("Active object must be a mesh")
+            return False
+
+        if context.mode != "OBJECT":
+            cls.poll_message_set("Must be in Object mode to refresh")
+            return False
+
+        return True
+
+    def execute(self, context):
+        if drawer.is_running:
+            drawer.stop()
+            drawer.start()
+            # # Reinitialize with current object
+            obj = context.active_object
+            if obj and obj.type == "MESH":
+                drawer.handle_object_switch(obj)
+
+            # for area in context.screen.areas:
+            #     if area.type == "VIEW_3D":
+            #         area.tag_redraw()
+        return {"FINISHED"}
+
+
 classes = (
     Mesh_Analysis_Overlay,
     Select_Feature_Elements,
+    Update_Mesh_Analysis_Overlay,
 )
 
 
