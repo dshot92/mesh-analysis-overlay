@@ -139,10 +139,28 @@ class Update_Mesh_Analysis_Overlay(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class Clear_Mesh_Analysis_Cache(bpy.types.Operator):
+    bl_idname = "view3d.clear_mesh_analysis_cache"
+    bl_label = "Clear All Cache"
+    bl_description = "Clear all cached overlay data. Use only if overlays are not updating correctly after mesh edits"
+
+    def execute(self, context):
+        drawer.stop()
+        drawer.batches.clear()
+        MeshAnalyzer.clear_cache()
+
+        for area in context.screen.areas:
+            if area.type == "VIEW_3D":
+                area.tag_redraw()
+
+        return {"FINISHED"}
+
+
 classes = (
     Mesh_Analysis_Overlay,
     Select_Feature_Elements,
     Update_Mesh_Analysis_Overlay,
+    Clear_Mesh_Analysis_Cache,
 )
 
 
