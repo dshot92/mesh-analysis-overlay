@@ -22,14 +22,11 @@ class Mesh_Analysis_Overlay(bpy.types.Operator):
             drawer.stop()
         else:
             drawer.start()
-            # Initialize with current object if available
+
             obj = context.active_object
             if obj and obj.type == "MESH":
                 drawer.handle_object_switch(obj)
 
-        for area in context.screen.areas:
-            if area.type == "VIEW_3D":
-                area.tag_redraw()
         return {"FINISHED"}
 
 
@@ -127,14 +124,11 @@ class Update_Mesh_Analysis_Overlay(bpy.types.Operator):
         if drawer.is_running:
             drawer.stop()
             drawer.start()
-            # # Reinitialize with current object
+
             obj = context.active_object
             if obj and obj.type == "MESH":
                 drawer.handle_object_switch(obj)
 
-            # for area in context.screen.areas:
-            #     if area.type == "VIEW_3D":
-            #         area.tag_redraw()
         return {"FINISHED"}
 
 

@@ -79,6 +79,28 @@ class GPUDrawer:
         self._handle = None
         self.current_obj = None
 
+    def handle_object_switch(self, new_obj):
+        self.current_obj = new_obj
+
+        # Get analyzer for new object
+        analyzer = MeshAnalyzer.get_analyzer(new_obj)
+
+        # Clear current batches
+        self.batches.clear()
+
+        # Update analysis and batches for enabled features
+        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+        for category in FEATURE_DATA.values():
+            for feature in category:
+                if getattr(props, f"{feature['id']}_enabled", False):
+                    indices = analyzer.analyze_feature(feature["id"])
+                    if indices:
+                        primitive_type = MeshAnalyzer.get_primitive_type(feature["id"])
+                        color = tuple(getattr(props, f"{feature['id']}_color"))
+                        self.update_feature_batch(
+                            feature["id"], indices, color, primitive_type
+                        )
+
     def update_feature_batch(
         self,
         feature: str,
@@ -194,25 +216,3 @@ class GPUDrawer:
         elif feature in MeshAnalyzer.vertex_features:
             return "POINTS"
         return None
-
-    def handle_object_switch(self, new_obj):
-        self.current_obj = new_obj
-
-        # Get analyzer for new object
-        analyzer = MeshAnalyzer.get_analyzer(new_obj)
-
-        # Clear current batches
-        self.batches.clear()
-
-        # Update analysis and batches for enabled features
-        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
-        for category in FEATURE_DATA.values():
-            for feature in category:
-                if getattr(props, f"{feature['id']}_enabled", False):
-                    indices = analyzer.analyze_feature(feature["id"])
-                    if indices:
-                        primitive_type = MeshAnalyzer.get_primitive_type(feature["id"])
-                        color = tuple(getattr(props, f"{feature['id']}_color"))
-                        self.update_feature_batch(
-                            feature["id"], indices, color, primitive_type
-                        )

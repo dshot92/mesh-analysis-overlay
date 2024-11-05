@@ -244,6 +244,7 @@ class MeshAnalyzer:
                             normals.append(normal_matrix @ vert.normal)
 
             batch_data = {"positions": positions, "normals": normals}
+
             self._batch_cache[cache_key] = batch_data
             return batch_data
 
