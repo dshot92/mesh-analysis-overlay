@@ -165,6 +165,10 @@ class GPUDrawer:
         gpu.state.blend_set("ALPHA")
         gpu.state.depth_test_set("LESS_EQUAL")
         gpu.state.face_culling_set("BACK")
+
+        # TODO: this will be deprecated.
+        # This should be handled in the shader.
+        # https://projects.blender.org/blender/blender/issues/129592#issuecomment-1330020
         gpu.state.point_size_set(
             bpy.context.scene.Mesh_Analysis_Overlay_Properties.overlay_vertex_radius
         )

@@ -36,6 +36,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         description="Distance to offset the overlay faces",
         default=0.01,
         precision=4,
+        min=0.0,
         # update=handlers.update_overlay_offset,
     )
     overlay_vertex_radius: FloatProperty(
@@ -50,7 +51,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         description="Width of the overlay edge indicators",
         default=5.0,
         min=1.0,
-        max=10.0,
+        max=50.0,
     )
 
     non_planar_threshold: FloatProperty(
