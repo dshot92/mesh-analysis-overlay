@@ -48,11 +48,7 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             has_enabled_features = False
             for feature in features:
                 feature_id = feature["id"]
-                if (
-                    getattr(props, f"{feature_id}_enabled", False)
-                    and stats["features"].get(category.title(), {}).get(feature_id, 0)
-                    > 0
-                ):
+                if getattr(props, f"{feature_id}_enabled", False):
                     has_enabled_features = True
                     break
 
@@ -62,10 +58,12 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
                 col = box.column()
                 for feature in features:
                     feature_id = feature["id"]
-                    count = (
-                        stats["features"].get(category.title(), {}).get(feature_id, 0)
-                    )
                     if getattr(props, f"{feature_id}_enabled", False):
+                        count = (
+                            stats["features"]
+                            .get(category.title(), {})
+                            .get(feature_id, 0)
+                        )
                         row = col.row()
                         row.label(text=f"{feature['label']}:")
                         row.label(text=str(count))
