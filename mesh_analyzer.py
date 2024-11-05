@@ -66,8 +66,22 @@ class MeshAnalyzer:
         if not self.obj or not self.obj.id_data:
             return []
 
-        # Create cache key using object ID and feature
-        cache_key = (self.obj.id_data.id_properties_ensure(), feature)
+        feature_category = None
+        feature_data = None
+        for category, features in FEATURE_DATA.items():
+            for f in features:
+                if f["id"] == feature:
+                    feature_category = category
+                    feature_data = f
+                    break
+            if feature_data:
+                break
+
+        cache_key = (
+            self.obj.id_data.id_properties_ensure(),
+            feature,
+            feature_category,
+        )
 
         # Check cache first
         if cache_key in self._analysis_cache:

@@ -53,13 +53,10 @@ def update_overlay_offset(self, context):
     """Callback for when offset property changes"""
     if not drawer or not drawer.is_running:
         return
-    logger.debug("\n=== Offset Update Handler ===")
-    if context and context.active_object:
-        obj = context.active_object
-        if obj and obj.type == "MESH":
-            MeshAnalyzer.update_analysis(obj)
-    # if context and context.area:
-    #     context.area.tag_redraw()
+
+    # For offset changes, we only need to redraw
+    if context and context.area:
+        context.area.tag_redraw()
 
 
 def update_non_planar_threshold(self, context):
@@ -67,13 +64,13 @@ def update_non_planar_threshold(self, context):
     if not drawer or not drawer.is_running:
         return
 
-    logger.debug("\n=== Non-Planar Threshold Update Handler ===")
     if context and context.active_object:
         obj = context.active_object
         if obj and obj.type == "MESH":
+            # Clear only analysis cache for non-planar faces
+            if "non_planar_faces" in MeshAnalyzer._analysis_cache:
+                del MeshAnalyzer._analysis_cache["non_planar_faces"]
             MeshAnalyzer.update_analysis(obj, ["non_planar_faces"])
-    # if context and context.area:
-    #     context.area.tag_redraw()
 
 
 @persistent
@@ -96,12 +93,33 @@ def handle_edit_mode_changes(scene, depsgraph):
             MeshAnalyzer.update_analysis(obj)
 
 
+_last_active_object = None
+
+
+@persistent
+def check_active_object_change(scene):
+    """Check if active object has changed"""
+    global _last_active_object
+
+    active_obj = bpy.context.active_object
+    if active_obj != _last_active_object:
+        if active_obj and active_obj.type == "MESH":
+            # Clear caches and update analysis for new object
+            MeshAnalyzer._analysis_cache.clear()
+            MeshAnalyzer._batch_cache.clear()
+            MeshAnalyzer.update_analysis(active_obj)
+        _last_active_object = active_obj
+
+
 def register():
     logger.debug("\n=== Registering Handlers ===")
     bpy.app.handlers.depsgraph_update_post.append(update_analysis_overlay)
+    bpy.app.handlers.depsgraph_update_post.append(check_active_object_change)
 
 
 def unregister():
     logger.debug("\n=== Unregistering Handlers ===")
     if update_analysis_overlay in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(update_analysis_overlay)
+    if check_active_object_change in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.remove(check_active_object_change)
