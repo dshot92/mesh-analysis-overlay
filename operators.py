@@ -125,12 +125,17 @@ class Update_Mesh_Analysis_Overlay(bpy.types.Operator):
 
     def execute(self, context):
         if drawer.is_running:
-            drawer.stop()
-            drawer.start()
-
             obj = context.active_object
             if obj and obj.type == "MESH":
-                drawer.handle_object_switch(obj)
+                # Clear cache for current object
+                MeshAnalyzer._clear_cache_for_object(obj.name)
+
+                # Restart drawer to clear batches
+                drawer.stop()
+                drawer.start()
+
+                # Update analysis
+                MeshAnalyzer.update_analysis(obj)
 
             for area in context.screen.areas:
                 if area.type == "VIEW_3D":
