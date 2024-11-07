@@ -9,6 +9,7 @@ from gpu_extras.batch import batch_for_shader
 from typing import List
 
 from .mesh_analyzer import MeshAnalyzer
+from .timeit import timeit
 
 point_vertex_shader = """
     uniform mat4 viewMatrix;
@@ -146,6 +147,7 @@ class GPUDrawer:
             self.batches.clear()
             return
 
+    @timeit
     def draw(self):
         if not self.is_running:
             return
