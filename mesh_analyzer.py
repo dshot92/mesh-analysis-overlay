@@ -326,13 +326,12 @@ class MeshAnalyzer:
                 if feature in drawer.batches:
                     del drawer.batches[feature]
 
-        # Only analyze and create batches for enabled features
-        for feature in features_to_analyze:
-            indices = analyzer.analyze_feature(feature)
-            if indices and drawer:
-                primitive_type = cls.get_primitive_type(feature)
-                color = tuple(getattr(props, f"{feature}_color"))
-                drawer.update_feature_batch(feature, indices, color, primitive_type)
+            # Only analyze and create batches for enabled features
+            for feature in features_to_analyze:
+                indices = analyzer.analyze_feature(feature)
+                if indices and drawer:
+                    primitive_type = cls.get_primitive_type(feature)
+                    drawer.update_feature_batch(feature, indices, primitive_type)
 
         return analyzer
 

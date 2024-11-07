@@ -6,7 +6,7 @@ import gpu
 from .feature_data import FEATURE_DATA
 
 from gpu_extras.batch import batch_for_shader
-from typing import List, Tuple
+from typing import List
 
 from .mesh_analyzer import MeshAnalyzer
 
@@ -96,16 +96,14 @@ class GPUDrawer:
                     indices = analyzer.analyze_feature(feature["id"])
                     if indices:
                         primitive_type = MeshAnalyzer.get_primitive_type(feature["id"])
-                        color = tuple(getattr(props, f"{feature['id']}_color"))
                         self.update_feature_batch(
-                            feature["id"], indices, color, primitive_type
+                            feature["id"], indices, primitive_type
                         )
 
     def update_feature_batch(
         self,
         feature: str,
         indices: List[int],
-        color: Tuple[float, float, float, float],
         primitive_type: str,
     ):
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
@@ -141,7 +139,7 @@ class GPUDrawer:
                 {"pos": batch_data["positions"], "normal": batch_data["normals"]},
             )
 
-            self.batches[feature] = {"batch": batch, "shader": shader, "color": color}
+            self.batches[feature] = {"batch": batch, "shader": shader}
 
         except (AttributeError, IndexError, ReferenceError) as e:
             print(f"Error in update_feature_batch: {e}")
@@ -161,20 +159,14 @@ class GPUDrawer:
             self.handle_object_switch(obj)
             return
 
+        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+
         # Set GPU state
         gpu.state.blend_set("ALPHA")
         gpu.state.depth_test_set("LESS_EQUAL")
         gpu.state.face_culling_set("BACK")
-
-        # TODO: this will be deprecated.
-        # This should be handled in the shader.
-        # https://projects.blender.org/blender/blender/issues/129592#issuecomment-1330020
-        gpu.state.point_size_set(
-            bpy.context.scene.Mesh_Analysis_Overlay_Properties.overlay_vertex_radius
-        )
-        gpu.state.line_width_set(
-            bpy.context.scene.Mesh_Analysis_Overlay_Properties.overlay_edge_width
-        )
+        gpu.state.point_size_set(props.overlay_vertex_radius)
+        gpu.state.line_width_set(props.overlay_edge_width)
 
         # Draw existing batches
         for feature, batch_data in self.batches.items():
@@ -183,11 +175,9 @@ class GPUDrawer:
 
             shader.uniform_float("viewMatrix", bpy.context.region_data.view_matrix)
             shader.uniform_float("windowMatrix", bpy.context.region_data.window_matrix)
-            shader.uniform_float(
-                "normal_offset",
-                bpy.context.scene.Mesh_Analysis_Overlay_Properties.overlay_offset,
-            )
-            shader.uniform_float("color", batch_data["color"])
+            shader.uniform_float("normal_offset", props.overlay_offset)
+            shader.uniform_float("color", tuple(getattr(props, f"{feature}_color")))
+
             batch_data["batch"].draw(shader)
 
         # Reset GPU state
