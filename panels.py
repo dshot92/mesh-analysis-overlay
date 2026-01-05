@@ -40,19 +40,6 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         row = layout.row()
         row.scale_y = ROW_SCALE
         row.alignment = ALIGNMENT
-        row.label(text="Overlay data is cached.", icon="INFO")
-        row = layout.row()
-        row.scale_y = ROW_SCALE
-        row.alignment = ALIGNMENT
-        row.label(text="Refresh by:")
-        row = layout.row()
-        row.scale_y = ROW_SCALE
-        row.alignment = ALIGNMENT
-        row.label(text="• Toggling Overlay off/on")
-        row = layout.row()
-        row.scale_y = ROW_SCALE
-        row.alignment = ALIGNMENT
-        row.label(text="• Toggling Edit Mode off/on")
 
         # Draw feature panels
         for category, features in FEATURE_DATA.items():
