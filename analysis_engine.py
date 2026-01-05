@@ -84,10 +84,19 @@ class MeshAnalysisEngine:
         return results
     
     def _analyze_feature_impl(self, obj: Object, feature: str) -> Optional[np.ndarray]:
-        """Implement feature analysis"""
+        """Implement feature analysis with Edit Mode awareness"""
         try:
-            bm = bmesh.new()
-            bm.from_mesh(obj.data)
+            # Determine if we should use the live Edit Mode buffer
+            is_edit_mode = obj.mode == 'EDIT' and obj.data.is_editmode
+            
+            if is_edit_mode:
+                # Use the fast, live pointer to the edit mesh
+                bm = bmesh.from_edit_mesh(obj.data)
+            else:
+                # Standard path: create a copy from mesh data
+                bm = bmesh.new()
+                bm.from_mesh(obj.data)
+            
             bm.edges.ensure_lookup_table()
             bm.faces.ensure_lookup_table()
             bm.verts.ensure_lookup_table()
@@ -102,7 +111,9 @@ class MeshAnalysisEngine:
             elif feature_type == FeatureType.FACE:
                 indices = self._analyze_face_features(bm, feature)
             
-            bm.free()
+            # Only free if we created a temporary BMesh (Object Mode)
+            if not is_edit_mode:
+                bm.free()
             
             if indices:
                 return np.array(indices, dtype=np.int32)
