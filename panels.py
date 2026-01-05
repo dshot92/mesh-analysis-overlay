@@ -44,11 +44,12 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
                     split = row.split(factor=factor)
                     split.prop(props, f"{feature['id']}_enabled", text=feature["label"])
                     split.prop(props, f"{feature['id']}_color", text="")
-                    split.operator(
+                    op = split.operator(
                         "view3d.select_feature_elements",
                         text="",
                         icon="RESTRICT_SELECT_OFF",
-                    ).feature = feature["id"]
+                    )
+                    op.feature = feature["id"]
 
         # Statistics panel
         header, panel = layout.panel("statistics_panel", default_closed=False)

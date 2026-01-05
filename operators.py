@@ -4,7 +4,7 @@ import bpy
 import bmesh
 
 from .overlay_controller import overlay_controller
-from .analysis_engine import MeshAnalysisEngine
+from .analysis_engine import FeatureType
 
 
 class Mesh_Analysis_Overlay(bpy.types.Operator):
@@ -61,12 +61,12 @@ class Select_Feature_Elements(bpy.types.Operator):
             self.report({"WARNING"}, "No active mesh object")
             return {"CANCELLED"}
 
-        if obj.mode != "EDIT":
+        # Ensure we are in Edit Mode for selection
+        was_edit = (obj.mode == 'EDIT')
+        if not was_edit:
             bpy.ops.object.mode_set(mode="EDIT")
-            bpy.ops.mesh.select_mode(type="VERT")
-
-        if self.mode == "SET":
-            bpy.ops.mesh.select_all(action="DESELECT")
+            # Default to vertex select if we had to switch
+            bpy.ops.mesh.select_mode(type='VERT')
 
         mesh = obj.data
         bm = bmesh.from_edit_mesh(mesh)
@@ -74,31 +74,56 @@ class Select_Feature_Elements(bpy.types.Operator):
         bm.edges.ensure_lookup_table()
         bm.verts.ensure_lookup_table()
 
-        analysis_engine = MeshAnalysisEngine()
+        # Use the controller's engine to benefit from caching
+        analysis_engine = overlay_controller.analysis_engine
         analysis_results = analysis_engine.analyze_mesh(obj, [self.feature])
         
         if self.feature not in analysis_results:
-            self.report({"WARNING"}, f"No {self.feature} elements found")
-            return {"CANCELLED"}
+            # Still update in case user expects a clear on 'SET'
+            if self.mode == "SET":
+                for item_list in [bm.faces, bm.edges, bm.verts]:
+                    for item in item_list:
+                        item.select = False
+                bmesh.update_edit_mesh(mesh)
+            self.report({"INFO"}, f"No {self.feature} elements found")
+            return {"FINISHED"}
         
         result = analysis_results[self.feature]
         indices = result.indices
-        feature_type = result.feature_type.value
+        feature_type = result.feature_type
+        
+        # 1. Handle selection reset for "SET" mode
+        if self.mode == "SET":
+            for v in bm.verts: v.select = False
+            for e in bm.edges: e.select = False
+            for f in bm.faces: f.select = False
 
-        # Select elements based on feature type
-        if feature_type == "FACE":
+        # 2. Apply selection change
+        select_val = (self.mode != "SUB")
+        
+        if feature_type == FeatureType.FACE:
             for idx in indices:
                 if idx < len(bm.faces):
-                    bm.faces[idx].select = self.mode != "SUB"
-        elif feature_type == "EDGE":
+                    bm.faces[idx].select = select_val
+            # Sync edge/vert selection for faces
+            bm.select_flush(select_val)
+        elif feature_type == FeatureType.EDGE:
             for idx in indices:
                 if idx < len(bm.edges):
-                    bm.edges[idx].select = self.mode != "SUB"
-        elif feature_type == "VERTEX":
+                    bm.edges[idx].select = select_val
+            bm.select_flush(select_val)
+        elif feature_type == FeatureType.VERTEX:
             for idx in indices:
                 if idx < len(bm.verts):
-                    bm.verts[idx].select = self.mode != "SUB"
+                    bm.verts[idx].select = select_val
+            bm.select_flush(select_val)
 
+        # 3. CRITICAL: Push changes back to the mesh
+        bmesh.update_edit_mesh(mesh)
+        
+        # Trigger overlay update if in edit mode to reflect potentially changed visibility (though usually selection doesn't change geometry)
+        overlay_controller.update_overlay(obj)
+        
         return {"FINISHED"}
 
 
