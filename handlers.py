@@ -51,10 +51,7 @@ def update_analysis_overlay(scene, depsgraph):
 
     # 4. Trigger redraws
     if dirty_objects or selection_changed:
-        for window in bpy.context.window_manager.windows:
-            for area in window.screen.areas:
-                if area.type == 'VIEW_3D':
-                    area.tag_redraw()
+        tag_redraw_viewports()
 
 
 def update_overlay_enabled_toggles(self, context):
@@ -67,23 +64,27 @@ def update_overlay_enabled_toggles(self, context):
 
 
 def update_overlay_offset(self, context):
-    """Callback for visual offset and size properties."""
+    """Callback for visual property updates (offset, size, etc.)"""
     if not overlay_controller.is_running: return
     overlay_controller.handle_property_change()
-    for window in context.window_manager.windows:
-        for area in window.screen.areas:
-            if area.type == 'VIEW_3D':
-                area.tag_redraw()
+    tag_redraw_viewports()
 
 
 def update_non_planar_threshold(self, context):
-    """Callback for threshold settings."""
+    """Special handler for threshold changes requiring partial re-analysis"""
     if not overlay_controller.is_running: return
+    
     Mesh_Analysis_Overlay_Panel.clear_stats_cache()
-    for obj_name in list(overlay_controller.displayed_objects):
-        overlay_controller.analysis_engine.invalidate_cache(obj_name, ["non_planar_faces"])
+    for name in list(overlay_controller.displayed_objects):
+        overlay_controller.analysis_engine.invalidate_cache(name, ["non_planar_faces"])
+    
     overlay_controller.update_all_selected()
-    for window in context.window_manager.windows:
+    tag_redraw_viewports()
+
+
+def tag_redraw_viewports():
+    """Trigger redraw for all 3D viewports"""
+    for window in bpy.context.window_manager.windows:
         for area in window.screen.areas:
             if area.type == 'VIEW_3D':
                 area.tag_redraw()

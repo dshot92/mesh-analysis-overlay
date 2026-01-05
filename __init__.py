@@ -1,7 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-import bpy
-
 # Import modules
 from . import operators, panels, properties, handlers
 from .overlay_controller import overlay_controller

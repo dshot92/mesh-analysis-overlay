@@ -3,7 +3,7 @@
 import bpy
 import bmesh
 import numpy as np
-from typing import List, Dict, Set, Optional, Tuple
+from typing import List, Dict, Optional
 from bpy.types import Object
 from dataclasses import dataclass
 from enum import Enum
@@ -158,40 +158,47 @@ class MeshAnalysisEngine:
         return indices
     
     def _analyze_face_features(self, bm: bmesh.types.BMesh, feature: str) -> List[int]:
-        """Analyze face-based features"""
+        """Analyze face-based features with optimized property access"""
         indices = []
         
+        # Pull threshold once for loop optimization
+        threshold_rad = 0.0
+        if feature == "non_planar_faces":
+            props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+            threshold_rad = np.radians(props.non_planar_threshold)
+
         for f in bm.faces:
-            if feature == "tri_faces" and len(f.verts) == 3:
-                indices.append(f.index)
-            elif feature == "quad_faces" and len(f.verts) == 4:
-                indices.append(f.index)
-            elif feature == "ngon_faces" and len(f.verts) > 4:
-                indices.append(f.index)
-            elif feature == "non_planar_faces" and not self._is_planar(f):
-                indices.append(f.index)
-            elif feature == "degenerate_faces" and self._is_degenerate(f):
-                indices.append(f.index)
+            if feature == "tri_faces":
+                if len(f.verts) == 3: indices.append(f.index)
+            elif feature == "quad_faces":
+                if len(f.verts) == 4: indices.append(f.index)
+            elif feature == "ngon_faces":
+                if len(f.verts) > 4: indices.append(f.index)
+            elif feature == "non_planar_faces":
+                if not self._is_planar_fast(f, threshold_rad):
+                    indices.append(f.index)
+            elif feature == "degenerate_faces":
+                if self._is_degenerate(f):
+                    indices.append(f.index)
         
         return indices
     
-    def _is_planar(self, face: bmesh.types.BMFace) -> bool:
-        """Check if face is planar"""
+    def _is_planar_fast(self, face: bmesh.types.BMFace, threshold_rad: float) -> bool:
+        """Check if face is planar using pre-calculated threshold"""
         if len(face.verts) <= 3:
             return True
         
-        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
-        threshold_rad = np.radians(props.non_planar_threshold)
-        
-        normal = face.normal.normalized()
+        normal = face.normal
         center = face.calc_center_median()
         
         for v in face.verts:
             v_pos = v.co - center
-            if v_pos.length < 1e-6:
+            if v_pos.length_squared < 1e-12:
                 continue
             
-            angle = np.arccos(np.clip(normal.dot(v_pos.normalized()), -1.0, 1.0))
+            # Dot product of normalized vectors
+            dot = normal.dot(v_pos.normalized())
+            angle = np.arccos(np.clip(dot, -1.0, 1.0))
             if abs(angle - np.pi / 2) > threshold_rad:
                 return False
         

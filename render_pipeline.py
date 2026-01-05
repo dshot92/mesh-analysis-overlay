@@ -3,7 +3,7 @@
 import bpy
 import gpu
 import numpy as np
-from typing import Dict, Optional, Set, List
+from typing import Dict, Set
 from gpu_extras.batch import batch_for_shader
 from bpy.types import Object
 import logging
@@ -54,7 +54,6 @@ class RenderPipeline:
         self._handle = bpy.types.SpaceView3D.draw_handler_add(
             self._draw, (), "WINDOW", "POST_VIEW"
         )
-        logger.debug("Render pipeline started (Native Point Shader)")
     
     def stop(self):
         """Stop the render pipeline"""

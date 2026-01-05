@@ -34,13 +34,6 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             depress=overlay_controller.is_running,
         )
 
-        # Info text
-        ROW_SCALE = 0.5
-        ALIGNMENT = "LEFT"
-        row = layout.row()
-        row.scale_y = ROW_SCALE
-        row.alignment = ALIGNMENT
-
         # Draw feature panels
         for category, features in FEATURE_DATA.items():
             header, panel = layout.panel(f"{category}_panel", default_closed=False)

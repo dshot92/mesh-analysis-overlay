@@ -2,22 +2,22 @@
 
 import bpy
 import numpy as np
-from typing import Dict, List, Tuple, Optional, Set
+from typing import Dict, Tuple, Optional, Set
 from bpy.types import Object
-from dataclasses import dataclass
 import logging
 import bmesh
 
-from .analysis_engine import MeshAnalysisEngine, AnalysisResult, FeatureType
+from .analysis_engine import MeshAnalysisEngine, FeatureType
 from .render_pipeline import RenderPipeline, PrimitiveType
 from .feature_data import FEATURE_DATA
 
+# Standard logger setup
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-@dataclass
 class GeometryProcessor:
-    """Convert analysis results to GPU-ready geometry using high-performance NumPy extraction"""
+    """Utilities for converting mesh analysis to GPU-ready arrays via NumPy"""
     
     @staticmethod
     def _get_mesh_data(obj: Object) -> Dict[str, np.ndarray]:
@@ -177,10 +177,11 @@ class OverlayController:
         self.displayed_objects = current_names
         
         for obj in selected_meshes:
-            # In Edit Mode, we always want the latest data during a selection-triggered refresh
+            # Re-analysis is mandatory in Edit Mode to catch modeling buffer changes
             if obj.mode == 'EDIT':
-                self.analysis_engine.invalidate_cache(obj.name)
-            self.update_overlay(obj)
+                self.handle_geometry_change(obj)
+            else:
+                self.update_overlay(obj)
 
     def update_overlay(self, obj: Object):
         if not self.is_running or not obj or obj.type != "MESH":
