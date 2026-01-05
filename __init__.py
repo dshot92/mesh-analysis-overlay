@@ -18,8 +18,6 @@ def register():
     # Register handlers
     handlers.register()
     
-    print("Mesh Analysis Overlay registered")
-
 
 def unregister():
     # Unregister in reverse order
@@ -31,8 +29,6 @@ def unregister():
     # Stop overlay controller
     if overlay_controller.is_running:
         overlay_controller.stop()
-    
-    print("Mesh Analysis Overlay unregistered")
 
 
 if __name__ == "__main__":
