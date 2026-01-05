@@ -84,14 +84,19 @@ def update_non_planar_threshold(self, context):
         return
 
     logger.debug("\n=== Non-Planar Threshold Update Handler ===")
-    if context and context.active_object:
-        obj = context.active_object
-        if obj and obj.type == "MESH":
-            overlay_controller.analysis_engine.invalidate_cache(obj.name, ["non_planar_faces"])
-            overlay_controller.handle_property_change("non_planar_faces")
     
-    if context and context.area:
-        context.area.tag_redraw()
+    # Invalidate non-planar cache for all currently tracked objects
+    for obj_name in list(overlay_controller.displayed_objects):
+        overlay_controller.analysis_engine.invalidate_cache(obj_name, ["non_planar_faces"])
+    
+    # Trigger full update for all selected meshes
+    overlay_controller.update_all_selected()
+    
+    # Redraw all 3D viewports
+    for window in context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type == 'VIEW_3D':
+                area.tag_redraw()
 
 
 @bpy.app.handlers.depsgraph_update_post.append

@@ -212,7 +212,7 @@ class MeshAnalysisEngine:
             for feature in features:
                 cache_key = f"{obj_name}:{feature}"
                 if cache_key in self.cache:
-                    del self.cache[key]
+                    del self.cache[cache_key]
     
     def get_cached_result(self, obj_name: str, feature: str) -> Optional[AnalysisResult]:
         """Get cached analysis result for a specific feature"""
