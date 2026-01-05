@@ -114,10 +114,6 @@ class GeometryProcessor:
         verts = mesh_data["verts"]
         normals = mesh_data["normals"]
         
-        if mesh_data["is_edit"]:
-            # Sync needed for loop triangles to match topology
-            obj.update_from_editmode()
-            
         mesh.calc_loop_triangles()
         
         poly_indices = np.empty(len(mesh.loop_triangles), dtype=np.int32)
@@ -135,7 +131,7 @@ class GeometryProcessor:
             
         feature_verts = verts[selected_v_indices]
         feature_normals = normals[selected_v_indices]
-        feature_colors = np.full((len(feature_verts), 4), color, dtype=np.float32)
+        feature_colors = np.full((len(selected_v_indices), 4), color, dtype=np.float32)
         
         return feature_verts, feature_normals, feature_colors
 
@@ -181,6 +177,9 @@ class OverlayController:
         self.displayed_objects = current_names
         
         for obj in selected_meshes:
+            # In Edit Mode, we always want the latest data during a selection-triggered refresh
+            if obj.mode == 'EDIT':
+                self.analysis_engine.invalidate_cache(obj.name)
             self.update_overlay(obj)
 
     def update_overlay(self, obj: Object):
@@ -200,11 +199,15 @@ class OverlayController:
                     enabled_features.append(f_id)
                     feature_colors[f_id] = tuple(getattr(props, f"{f_id}_color"))
         
-        # Analyze using Mode-Aware engine
-        analysis_results = self.analysis_engine.analyze_mesh(obj, enabled_features)
-        
         # Fetch LIVE mesh data (BMesh if in Edit Mode)
         mesh_data = self.geometry_processor._get_mesh_data(obj)
+        
+        if mesh_data["is_edit"]:
+            # Sync needed once for loop triangles to match current modeling topology
+            obj.update_from_editmode()
+        
+        # Analyze using Mode-Aware engine
+        analysis_results = self.analysis_engine.analyze_mesh(obj, enabled_features)
         
         for category, features in FEATURE_DATA.items():
             for feature in features:

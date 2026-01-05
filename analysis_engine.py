@@ -213,6 +213,9 @@ class MeshAnalysisEngine:
     
     def invalidate_cache(self, obj_name: str, features: Optional[List[str]] = None):
         """Invalidate cache for specific object and features"""
+        if obj_name in self.mesh_stats:
+            del self.mesh_stats[obj_name]
+            
         if features is None:
             # Clear all features for this object
             keys_to_remove = [key for key in self.cache.keys() if key.startswith(f"{obj_name}:")]

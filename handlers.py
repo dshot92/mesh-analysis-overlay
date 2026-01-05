@@ -1,94 +1,75 @@
 import bpy
 import logging
-import bmesh
 
 from bpy.app.handlers import persistent
 from .overlay_controller import overlay_controller
-from .analysis_engine import MeshAnalysisEngine
-from .feature_data import FEATURE_DATA
 from .panels import Mesh_Analysis_Overlay_Panel
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-logger.propagate = False
 
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter("%(message)s")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-
-
-# Used as a callback for depsgraph updates
 @persistent
 def update_analysis_overlay(scene, depsgraph):
+    """Primary depsgraph callback. Optimized for real-time Edit Mode tracking."""
     if not overlay_controller.is_running:
         return
     
-    # 1. Handle selection changes
-    current_selected = {obj.name for obj in bpy.context.selected_objects if obj.type == "MESH"}
-    if current_selected != overlay_controller.displayed_objects:
-        logger.debug(f"Selection change detected")
-        overlay_controller.update_all_selected()
-        return
-
-    # 2. Handle geometry and topology updates
-    needs_update = False
+    # 1. Update selection state
+    current_names = {obj.name for obj in bpy.context.selected_objects if obj.type == "MESH"}
+    selection_changed = current_names != overlay_controller.displayed_objects
     
-    # Check if any updated ID is a mesh we are currently displaying
-    for update in depsgraph.updates:
-        # Check Mesh datablocks (Topological edits)
-        if isinstance(update.id, bpy.types.Mesh):
-            # Find if any displayed object uses this mesh
-            for obj_name in overlay_controller.displayed_objects:
-                obj = bpy.data.objects.get(obj_name)
-                if obj and obj.data == update.id:
-                    if obj.mode == 'EDIT':
-                        obj.update_from_editmode()
-                    needs_update = True
-                    break
-        
-        # Check Object ID (Transformations/General updates)
-        elif isinstance(update.id, bpy.types.Object) and update.id.type == "MESH":
-            if update.id.name in overlay_controller.displayed_objects:
-                if update.id.mode == 'EDIT':
-                    update.id.update_from_editmode()
-                needs_update = True
-                break
-
-    if needs_update:
-        logger.debug("*** AUTOMATIC GEOMETRY REFRESH ***")
-        Mesh_Analysis_Overlay_Panel.clear_stats_cache()
+    if selection_changed:
         overlay_controller.update_all_selected()
+
+    # 2. Identify objects needing a geometry/analysis update
+    dirty_objects = set()
+    
+    # In Edit Mode, we are more aggressive: any depsgraph update while 
+    # the object is displayed means we should check for changes.
+    for name in overlay_controller.displayed_objects:
+        obj = bpy.data.objects.get(name)
+        if not obj: continue
         
-        # Force redraw of all 3D viewports
+        # In Edit Mode, the modeling buffer is live, so we treat it as potentially dirty 
+        # whenever Blender notifies us of a change in the viewport.
+        if obj.mode == 'EDIT':
+            dirty_objects.add(obj)
+            continue
+            
+        # For Object Mode, we use standard depsgraph update tracking
+        for update in depsgraph.updates:
+            if update.id == obj or update.id == obj.data:
+                if update.is_updated_geometry or update.is_updated_transform:
+                    dirty_objects.add(obj)
+                    break
+
+    # 3. Process all dirty objects
+    if dirty_objects:
+        Mesh_Analysis_Overlay_Panel.clear_stats_cache()
+        for obj in dirty_objects:
+            # We invalidate and then update. Analysis happens on the BMesh buffer.
+            overlay_controller.handle_geometry_change(obj)
+
+    # 4. Trigger redraws
+    if dirty_objects or selection_changed:
         for window in bpy.context.window_manager.windows:
             for area in window.screen.areas:
                 if area.type == 'VIEW_3D':
                     area.tag_redraw()
 
 
-# Used as a callback for feature toggles
 def update_overlay_enabled_toggles(self, context):
-    if not overlay_controller.is_running:
-        return
-    logger.debug("\n=== Toggle Enabled Update Handler ===")
-
+    """Callback for feature property toggles."""
+    if not overlay_controller.is_running: return
     Mesh_Analysis_Overlay_Panel.clear_stats_cache()
     overlay_controller.update_all_selected()
-    
-    if context and context.area:
+    if context and hasattr(context, 'area') and context.area:
         context.area.tag_redraw()
 
 
-# Used as a callback for visual property updates
 def update_overlay_offset(self, context):
-    if not overlay_controller.is_running:
-        return
-        
-    logger.debug("\n=== Visual Property Update Handler ===")
+    """Callback for visual offset and size properties."""
+    if not overlay_controller.is_running: return
     overlay_controller.handle_property_change()
-    
     for window in context.window_manager.windows:
         for area in window.screen.areas:
             if area.type == 'VIEW_3D':
@@ -96,17 +77,12 @@ def update_overlay_offset(self, context):
 
 
 def update_non_planar_threshold(self, context):
-    if not overlay_controller.is_running:
-        return
-
-    logger.debug("\n=== Non-Planar Threshold Update Handler ===")
+    """Callback for threshold settings."""
+    if not overlay_controller.is_running: return
     Mesh_Analysis_Overlay_Panel.clear_stats_cache()
-    
     for obj_name in list(overlay_controller.displayed_objects):
         overlay_controller.analysis_engine.invalidate_cache(obj_name, ["non_planar_faces"])
-    
     overlay_controller.update_all_selected()
-    
     for window in context.window_manager.windows:
         for area in window.screen.areas:
             if area.type == 'VIEW_3D':
@@ -114,12 +90,10 @@ def update_non_planar_threshold(self, context):
 
 
 def register():
-    logger.debug("\n=== Registering Handlers ===")
     if update_analysis_overlay not in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.append(update_analysis_overlay)
 
 
 def unregister():
-    logger.debug("\n=== Unregistering Handlers ===")
     if update_analysis_overlay in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(update_analysis_overlay)
