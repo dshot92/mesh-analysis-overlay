@@ -27,31 +27,21 @@ def update_analysis_overlay(scene, depsgraph):
     if not overlay_controller.is_running:
         return
     
-    # Check if active object changed (selection change)
-    active_obj = bpy.context.active_object
-    if active_obj and active_obj.type == "MESH":
-        if active_obj != overlay_controller.current_object:
-            logger.debug(f"Selection change: {active_obj.name}")
-            overlay_controller.update_overlay(active_obj)
-            return
-    logger.debug("\n=== Depsgraph Update Handler ===")
-    logger.debug(f"Total updates: {len(depsgraph.updates)}")
+    # Selection change detection (any mesh selection change)
+    current_selected = {obj.name for obj in bpy.context.selected_objects if obj.type == "MESH"}
+    if current_selected != overlay_controller.displayed_objects:
+        logger.debug(f"Selection change detected")
+        overlay_controller.update_all_selected()
+        return
 
-    # Get evaluated depsgraph objects
+    # Handle geometry updates for all selected meshes
     for update in depsgraph.updates:
-        # Check if update is for a mesh object
         if isinstance(update.id, bpy.types.Object) and update.id.type == "MESH":
             obj = update.id
-            logger.debug(f"Object updated: {obj.name} ({obj.type})")
-            logger.debug(f"Geometry updated: {update.is_updated_geometry}")
-            logger.debug(f"Transform updated: {update.is_updated_transform}")
-
-            # Handle both geometry and transform updates
-            if obj.type == "MESH" and update.is_updated_geometry:
+            if obj.name in overlay_controller.displayed_objects and update.is_updated_geometry:
                 # Clear statistics cache when geometry changes
                 Mesh_Analysis_Overlay_Panel.clear_stats_cache()
-                logger.debug(f"*** GEOMETRY CHANGE DETECTED ***")
-                logger.debug(f"Updating overlay for geometry change")
+                logger.debug(f"*** GEOMETRY CHANGE DETECTED: {obj.name} ***")
                 overlay_controller.handle_geometry_change(obj)
 
 

@@ -98,7 +98,6 @@ class GeometryProcessor:
         mask = np.isin(poly_indices, indices)
         
         # Get vertex indices for the selected triangles
-        # foreach_get returns a flat array of all 3 vertices for all loop_triangles
         all_tri_v_indices = np.empty(len(mesh.loop_triangles) * 3, dtype=np.int32)
         mesh.loop_triangles.foreach_get("vertices", all_tri_v_indices)
         all_tri_v_indices = all_tri_v_indices.reshape((-1, 3))
@@ -120,16 +119,15 @@ class GeometryProcessor:
 
 
 class OverlayController:
-    """Main controller coordinating analysis and rendering"""
+    """Main controller coordinating analysis and rendering for multiple objects"""
     
     def __init__(self):
         self.analysis_engine = MeshAnalysisEngine()
         self.render_pipeline = RenderPipeline()
         self.geometry_processor = GeometryProcessor()
         
-        self.current_object: Optional[Object] = None
-        self.enabled_features: Set[str] = set()
-        self.feature_colors: Dict[str, Tuple[float, float, float, float]] = {}
+        # Track objects currently being displayed
+        self.displayed_objects: Set[str] = set()
         
         self.is_running = False
     
@@ -140,6 +138,8 @@ class OverlayController:
         
         self.is_running = True
         self.render_pipeline.start()
+        # Initialize for all currently selected objects
+        self.update_all_selected()
         logger.debug("Overlay controller started")
     
     def stop(self):
@@ -149,30 +149,34 @@ class OverlayController:
         
         self.is_running = False
         self.render_pipeline.stop()
-        self.current_object = None
+        self.displayed_objects.clear()
         logger.debug("Overlay controller stopped")
     
-    def update_overlay(self, obj: Optional[Object] = None):
-        """Update overlay for current or specified object"""
+    def update_all_selected(self):
+        """Update overlay for all currently selected objects"""
         if not self.is_running:
             return
+            
+        selected_meshes = [obj for obj in bpy.context.selected_objects if obj.type == "MESH"]
         
-        if obj is None:
-            obj = bpy.context.active_object
+        # Clean up data for objects no longer selected
+        current_names = {obj.name for obj in selected_meshes}
+        to_remove = self.displayed_objects - current_names
+        for name in to_remove:
+            self.render_pipeline.clear_object_data(name)
+        self.displayed_objects = current_names
         
-        if not obj or obj.type != "MESH":
+        for obj in selected_meshes:
+            self.update_overlay(obj)
+
+    def update_overlay(self, obj: Object):
+        """Update overlay for a specific object"""
+        if not self.is_running or not obj or obj.type != "MESH":
             return
         
         logger.debug(f"update_overlay called: obj={obj.name}")
         
-        # Check if object changed - clear old data
-        if self.current_object != obj:
-            self.current_object = obj
-            self.analysis_engine.invalidate_cache(obj.name)
-            self.render_pipeline.clear_all()
-        
-        # Tell render pipeline which object this data is for
-        self.render_pipeline.set_data_object(obj.name)
+        self.displayed_objects.add(obj.name)
 
         # Get enabled features and colors
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
@@ -186,12 +190,8 @@ class OverlayController:
                     enabled_features.append(feature_id)
                     feature_colors[feature_id] = tuple(getattr(props, f"{feature_id}_color"))
         
-        logger.debug(f"Enabled features: {enabled_features}")
-        
-        # Analyze mesh for geometry changes
+        # Analyze mesh
         analysis_results = self.analysis_engine.analyze_mesh(obj, enabled_features)
-        
-        logger.debug(f"Analysis results: {list(analysis_results.keys())}")
         
         # Optimization: Fetch base mesh data once
         mesh_data = self.geometry_processor._get_mesh_data(obj.data)
@@ -221,41 +221,31 @@ class OverlayController:
                 )
                 primitive_type = PrimitiveType.TRIS
             
-            logger.debug(f"Processed {feature_id}: {len(vertices)} vertices")
-            
-            # Update render pipeline
-            if len(vertices) > 0:
-                self.render_pipeline.update_feature_data(
-                    feature_id, vertices, normals, colors, primitive_type
-                )
+            # Update render pipeline for this specific object
+            self.render_pipeline.update_feature_data(
+                obj.name, feature_id, vertices, normals, colors, primitive_type
+            )
     
-    def mark_dirty(self, feature: Optional[str] = None, dirty_type: str = "geometry"):
-        """Mark features as dirty"""
-        if feature:
-            self.render_pipeline.mark_geometry_dirty(feature)
-        else:
-            self.render_pipeline.mark_geometry_dirty()
+    def mark_dirty(self, feature: Optional[str] = None):
+        """Mark features as dirty for all displayed objects"""
+        self.render_pipeline.mark_geometry_dirty(feature)
+        self.render_pipeline.mark_properties_dirty(feature)
     
     def handle_geometry_change(self, obj: Object):
-        """Handle geometry changes"""
+        """Handle geometry changes for a specific object"""
         if not self.is_running:
             return
         
         self.analysis_engine.invalidate_cache(obj.name)
-        self.mark_dirty()
-        
-        if obj == self.current_object:
-            self.update_overlay(obj)
+        self.update_overlay(obj)
     
     def handle_property_change(self, feature: Optional[str] = None):
-        """Handle property changes"""
+        """Handle property changes - updates all selected objects"""
         if not self.is_running:
             return
         
-        self.mark_dirty(feature, "properties")
-        
-        if self.current_object:
-            self.update_overlay(self.current_object)
+        self.mark_dirty(feature)
+        self.update_all_selected()
     
     def get_mesh_stats(self, obj: Object) -> Dict[str, int]:
         """Get mesh statistics"""
@@ -265,6 +255,7 @@ class OverlayController:
         """Clear all caches"""
         self.analysis_engine.clear_all_cache()
         self.render_pipeline.clear_all()
+        self.displayed_objects.clear()
 
 
 # Global instance

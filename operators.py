@@ -19,8 +19,8 @@ class Mesh_Analysis_Overlay(bpy.types.Operator):
             overlay_controller.stop()
         else:
             overlay_controller.start()
-            # Initial update
-            overlay_controller.update_overlay()
+            # Initial update for all selected objects
+            overlay_controller.update_all_selected()
 
         for area in context.screen.areas:
             if area.type == "VIEW_3D":
