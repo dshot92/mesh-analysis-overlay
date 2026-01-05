@@ -1,4 +1,4 @@
-![image](https://i.imgur.com/GGGHARb.jpeg)
+![image](https://i.imgur.com/5kY3v6G.jpeg)
 # Mesh Analysis Overlay
 
 ### Face Overlays
