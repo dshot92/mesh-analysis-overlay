@@ -1,10 +1,16 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import bpy
-from bpy.props import BoolProperty, FloatVectorProperty, FloatProperty
+from bpy.props import (
+    BoolProperty,
+    FloatVectorProperty,
+    FloatProperty,
+    PointerProperty,
+)
 from bpy.types import PropertyGroup
-from . import handlers
+
 from .feature_data import FEATURE_DATA
+from . import handlers
 
 
 class Mesh_Analysis_Overlay_Props(PropertyGroup):
@@ -64,17 +70,13 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     )
 
 
-classes = (Mesh_Analysis_Overlay_Props,)
-
-
 def register():
-    for bl_class in classes:
-        bpy.utils.register_class(bl_class)
-    bpy.types.Scene.Mesh_Analysis_Overlay_Properties = bpy.props.PointerProperty(
+    bpy.utils.register_class(Mesh_Analysis_Overlay_Props)
+    bpy.types.Scene.Mesh_Analysis_Overlay_Properties = PointerProperty(
         type=Mesh_Analysis_Overlay_Props
     )
 
 
 def unregister():
-    bpy.utils.unregister_class(Mesh_Analysis_Overlay_Props)
     del bpy.types.Scene.Mesh_Analysis_Overlay_Properties
+    bpy.utils.unregister_class(Mesh_Analysis_Overlay_Props)

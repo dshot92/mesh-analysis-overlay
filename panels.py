@@ -2,8 +2,7 @@
 
 import bpy
 
-from .operators import drawer
-from .mesh_analyzer import MeshAnalyzer
+from .overlay_controller import overlay_controller
 from .feature_data import FEATURE_DATA
 
 
@@ -32,7 +31,7 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             "view3d.mesh_analysis_overlay",
             text="Show Mesh Overlay",
             icon="OVERLAY",
-            depress=drawer.is_running,
+            depress=overlay_controller.is_running,
         )
 
         # Info text
@@ -91,7 +90,7 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
     def draw_statistics(self, context, panel):
         """Draw statistics using cached values when possible"""
         if not (
-            drawer.is_running
+            overlay_controller.is_running
             and context.active_object
             and context.active_object.type == "MESH"
         ):
@@ -103,7 +102,7 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
 
         # Get cached stats or calculate new ones
         if obj.name not in self._stats_cache:
-            analyzer = MeshAnalyzer.get_analyzer(obj)
+            analysis_engine = overlay_controller.analysis_engine
             stats = {"mode": context.mode, "features": {}}
 
             # Use FEATURE_DATA order for consistency
@@ -114,8 +113,9 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
                     if getattr(props, f"{feature['id']}_enabled", False)
                 ]
                 if active_features:
+                    analysis_results = analysis_engine.analyze_mesh(obj, active_features)
                     stats["features"][category.title()] = {
-                        feature: len(analyzer.analyze_feature(feature))
+                        feature: len(result.indices) if feature in analysis_results else 0
                         for feature in active_features
                     }
 

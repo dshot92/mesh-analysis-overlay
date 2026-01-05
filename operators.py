@@ -3,11 +3,8 @@
 import bpy
 import bmesh
 
-from .gpu_drawer import GPUDrawer
-from .mesh_analyzer import MeshAnalyzer
-
-
-drawer = GPUDrawer()
+from .overlay_controller import overlay_controller
+from .analysis_engine import MeshAnalysisEngine
 
 
 class Mesh_Analysis_Overlay(bpy.types.Operator):
@@ -18,10 +15,12 @@ class Mesh_Analysis_Overlay(bpy.types.Operator):
     )
 
     def execute(self, context):
-        if drawer.is_running:
-            drawer.stop()
+        if overlay_controller.is_running:
+            overlay_controller.stop()
         else:
-            drawer.start()
+            overlay_controller.start()
+            # Initial update
+            overlay_controller.update_overlay()
 
         for area in context.screen.areas:
             if area.type == "VIEW_3D":
@@ -75,9 +74,16 @@ class Select_Feature_Elements(bpy.types.Operator):
         bm.edges.ensure_lookup_table()
         bm.verts.ensure_lookup_table()
 
-        analyzer = MeshAnalyzer.get_analyzer(obj)
-        indices = analyzer.analyze_feature(self.feature)
-        feature_type = analyzer.get_feature_type(self.feature)
+        analysis_engine = MeshAnalysisEngine()
+        analysis_results = analysis_engine.analyze_mesh(obj, [self.feature])
+        
+        if self.feature not in analysis_results:
+            self.report({"WARNING"}, f"No {self.feature} elements found")
+            return {"CANCELLED"}
+        
+        result = analysis_results[self.feature]
+        indices = result.indices
+        feature_type = result.feature_type.value
 
         # Select elements based on feature type
         if feature_type == "FACE":
@@ -88,7 +94,7 @@ class Select_Feature_Elements(bpy.types.Operator):
             for idx in indices:
                 if idx < len(bm.edges):
                     bm.edges[idx].select = self.mode != "SUB"
-        elif feature_type == "VERT":
+        elif feature_type == "VERTEX":
             for idx in indices:
                 if idx < len(bm.verts):
                     bm.verts[idx].select = self.mode != "SUB"
@@ -108,8 +114,8 @@ def register():
 
 
 def unregister():
-    if drawer:
-        drawer.stop()
+    if overlay_controller.is_running:
+        overlay_controller.stop()
 
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)

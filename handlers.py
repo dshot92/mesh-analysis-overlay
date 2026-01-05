@@ -3,12 +3,13 @@ import logging
 import bmesh
 
 from bpy.app.handlers import persistent
-from .mesh_analyzer import MeshAnalyzer
-from .operators import drawer
+from .overlay_controller import overlay_controller
+from .analysis_engine import MeshAnalysisEngine
+from .feature_data import FEATURE_DATA
 from .panels import Mesh_Analysis_Overlay_Panel
 
 logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.DEBUG)
 logger.propagate = False
 
 if not logger.handlers:
@@ -23,9 +24,18 @@ if not logger.handlers:
 def update_analysis_overlay(scene, depsgraph):
     if bpy.context.mode == "EDIT_MESH":
         return
-    if not drawer or not drawer.is_running:
+    if not overlay_controller.is_running:
         return
+    
+    # Check if active object changed (selection change)
+    active_obj = bpy.context.active_object
+    if active_obj and active_obj.type == "MESH":
+        if active_obj != overlay_controller.current_object:
+            logger.debug(f"Selection change: {active_obj.name}")
+            overlay_controller.update_overlay(active_obj)
+            return
     logger.debug("\n=== Depsgraph Update Handler ===")
+    logger.debug(f"Total updates: {len(depsgraph.updates)}")
 
     # Get evaluated depsgraph objects
     for update in depsgraph.updates:
@@ -34,59 +44,63 @@ def update_analysis_overlay(scene, depsgraph):
             obj = update.id
             logger.debug(f"Object updated: {obj.name} ({obj.type})")
             logger.debug(f"Geometry updated: {update.is_updated_geometry}")
+            logger.debug(f"Transform updated: {update.is_updated_transform}")
 
+            # Handle both geometry and transform updates
             if obj.type == "MESH" and update.is_updated_geometry:
                 # Clear statistics cache when geometry changes
                 Mesh_Analysis_Overlay_Panel.clear_stats_cache()
-                logger.debug(f"Updating drawer batches for features")
-                drawer.update_batches(obj)
+                logger.debug(f"*** GEOMETRY CHANGE DETECTED ***")
+                logger.debug(f"Updating overlay for geometry change")
+                overlay_controller.handle_geometry_change(obj)
 
 
 # Used as a callback for property updates in properties.py
 def update_overlay_enabled_toggles(self, context):
-    if not drawer or not drawer.is_running:
+    if not overlay_controller.is_running:
         return
     logger.debug("\n=== Toggle Enabled Update Handler ===")
-    # if context and context.active_object:
-    # logger.debug(f"Active object: {context.active_object.name}")
 
     if context and context.active_object:
         obj = context.active_object
-    if obj and obj.type == "MESH":
-        # Clear statistics cache when features are toggled
-        Mesh_Analysis_Overlay_Panel.clear_stats_cache()
-        drawer.update_batches(obj)
-    # if context and context.area:
-    #     context.area.tag_redraw()
+        if obj and obj.type == "MESH":
+            # Clear statistics cache when features are toggled
+            Mesh_Analysis_Overlay_Panel.clear_stats_cache()
+            overlay_controller.handle_property_change()
+    
+    if context and context.area:
+        context.area.tag_redraw()
 
 
 # Used as a callback for offset property updates in properties.py
 def update_overlay_offset(self, context):
     """Callback for when offset property changes"""
-    if not drawer or not drawer.is_running:
+    if not overlay_controller.is_running:
         return
     logger.debug("\n=== Offset Update Handler ===")
     if context and context.active_object:
         obj = context.active_object
         if obj and obj.type == "MESH":
-            drawer.update_batches(obj)
-    # if context and context.area:
-    #     context.area.tag_redraw()
+            overlay_controller.handle_property_change()
+    
+    if context and context.area:
+        context.area.tag_redraw()
 
 
 def update_non_planar_threshold(self, context):
     """Specific handler for non-planar threshold updates"""
-    if not drawer or not drawer.is_running:
+    if not overlay_controller.is_running:
         return
 
     logger.debug("\n=== Non-Planar Threshold Update Handler ===")
     if context and context.active_object:
         obj = context.active_object
         if obj and obj.type == "MESH":
-            MeshAnalyzer.invalidate_cache(obj.name, ["non_planar_faces"])
-            drawer.update_batches(obj, ["non_planar_faces"])
-    # if context and context.area:
-    #     context.area.tag_redraw()
+            overlay_controller.analysis_engine.invalidate_cache(obj.name, ["non_planar_faces"])
+            overlay_controller.handle_property_change("non_planar_faces")
+    
+    if context and context.area:
+        context.area.tag_redraw()
 
 
 @bpy.app.handlers.depsgraph_update_post.append
@@ -123,25 +137,18 @@ def handle_edit_mode_changes(scene, depsgraph):
             continue
 
         bm = bmesh.from_edit_mesh(obj.data)
-        analyzer = MeshAnalyzer.get_analyzer(obj)
+        stats = overlay_controller.get_mesh_stats(obj)
 
         # Check if elements were deleted
         if (
-            len(bm.verts) < analyzer.mesh_stats["verts"]
-            or len(bm.edges) < analyzer.mesh_stats["edges"]
-            or len(bm.faces) < analyzer.mesh_stats["faces"]
+            len(bm.verts) < stats["verts"]
+            or len(bm.edges) < stats["edges"]
+            or len(bm.faces) < stats["faces"]
         ):
             Mesh_Analysis_Overlay_Panel.clear_stats_cache()
-            MeshAnalyzer.invalidate_cache(obj.name)
-            if drawer and drawer.is_running:
-                drawer.update_batches(obj)
-
-        # Update cached stats
-        analyzer.mesh_stats = {
-            "verts": len(bm.verts),
-            "edges": len(bm.edges),
-            "faces": len(bm.faces),
-        }
+            overlay_controller.analysis_engine.invalidate_cache(obj.name)
+            if overlay_controller.is_running:
+                overlay_controller.handle_geometry_change(obj)
 
 
 def register():
