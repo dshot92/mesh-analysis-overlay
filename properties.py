@@ -50,6 +50,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         default=5.0,
         min=1.0,
         max=50.0,
+        update=handlers.update_overlay_offset,
     )
     overlay_edge_width: FloatProperty(
         name="Overlay Edge Width",
@@ -57,6 +58,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         default=5.0,
         min=1.0,
         max=10.0,
+        update=handlers.update_overlay_offset,
     )
 
     non_planar_threshold: FloatProperty(

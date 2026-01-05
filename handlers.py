@@ -62,19 +62,20 @@ def update_overlay_enabled_toggles(self, context):
         context.area.tag_redraw()
 
 
-# Used as a callback for offset property updates in properties.py
+# Used as a callback for offset/visual property updates (offset, width, radius)
 def update_overlay_offset(self, context):
-    """Callback for when offset property changes"""
+    """Callback for when visual properties (offset, edge width, vertex radius) change"""
     if not overlay_controller.is_running:
         return
-    logger.debug("\n=== Offset Update Handler ===")
-    if context and context.active_object:
-        obj = context.active_object
-        if obj and obj.type == "MESH":
-            overlay_controller.handle_property_change()
+        
+    logger.debug("\n=== Visual Property Update Handler ===")
+    overlay_controller.handle_property_change()
     
-    if context and context.area:
-        context.area.tag_redraw()
+    # Redraw all 3D viewports
+    for window in context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type == 'VIEW_3D':
+                area.tag_redraw()
 
 
 def update_non_planar_threshold(self, context):

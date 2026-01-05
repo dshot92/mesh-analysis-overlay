@@ -196,35 +196,43 @@ class OverlayController:
         # Optimization: Fetch base mesh data once
         mesh_data = self.geometry_processor._get_mesh_data(obj.data)
         
-        for feature_id, result in analysis_results.items():
-            if feature_id not in feature_colors:
-                continue
-            
-            color = feature_colors[feature_id]
-            vertices, normals, colors = [], [], []
-            
-            if result.feature_type == FeatureType.VERTEX:
-                vertices, normals, colors = self.geometry_processor.process_vertices(
-                    result.indices, color, mesh_data
-                )
-                primitive_type = PrimitiveType.POINTS
+        # Process all possible features (to ensure disabled ones are cleared)
+        for category, features in FEATURE_DATA.items():
+            for feature in features:
+                feature_id = feature["id"]
                 
-            elif result.feature_type == FeatureType.EDGE:
-                vertices, normals, colors = self.geometry_processor.process_edges(
-                    result.indices, color, mesh_data
-                )
-                primitive_type = PrimitiveType.LINES
-                
-            elif result.feature_type == FeatureType.FACE:
-                vertices, normals, colors = self.geometry_processor.process_faces(
-                    obj, result.indices, color, mesh_data
-                )
-                primitive_type = PrimitiveType.TRIS
-            
-            # Update render pipeline for this specific object
-            self.render_pipeline.update_feature_data(
-                obj.name, feature_id, vertices, normals, colors, primitive_type
-            )
+                if feature_id in enabled_features and feature_id in analysis_results:
+                    result = analysis_results[feature_id]
+                    color = feature_colors[feature_id]
+                    vertices, normals, colors = [], [], []
+                    
+                    if result.feature_type == FeatureType.VERTEX:
+                        vertices, normals, colors = self.geometry_processor.process_vertices(
+                            result.indices, color, mesh_data
+                        )
+                        primitive_type = PrimitiveType.POINTS
+                        
+                    elif result.feature_type == FeatureType.EDGE:
+                        vertices, normals, colors = self.geometry_processor.process_edges(
+                            result.indices, color, mesh_data
+                        )
+                        primitive_type = PrimitiveType.LINES
+                        
+                    elif result.feature_type == FeatureType.FACE:
+                        vertices, normals, colors = self.geometry_processor.process_faces(
+                            obj, result.indices, color, mesh_data
+                        )
+                        primitive_type = PrimitiveType.TRIS
+                    
+                    # Update render pipeline for this specific object
+                    self.render_pipeline.update_feature_data(
+                        obj.name, feature_id, vertices, normals, colors, primitive_type
+                    )
+                else:
+                    # Feature is disabled or has no results - clear it from the pipeline
+                    self.render_pipeline.update_feature_data(
+                        obj.name, feature_id, np.array([]), np.array([]), np.array([]), PrimitiveType.POINTS
+                    )
     
     def mark_dirty(self, feature: Optional[str] = None):
         """Mark features as dirty for all displayed objects"""

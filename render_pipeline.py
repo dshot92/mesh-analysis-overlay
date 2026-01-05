@@ -14,10 +14,15 @@ logger = logging.getLogger(__name__)
 
 
 class RenderPipeline:
-    """High-performance rendering pipeline supporting multiple selected objects"""
+    """Modern rendering pipeline using native POINT shaders"""
     
     def __init__(self):
-        self.shader = None
+        # Shaders for different primitive types
+        self.shaders = {
+            PrimitiveType.TRIS: None,
+            PrimitiveType.LINES: None,
+            PrimitiveType.POINTS: None,
+        }
         # Nested dict: obj_name -> feature_id -> RenderData
         self.render_data: Dict[str, Dict[str, RenderData]] = {}
         # Nested dict: obj_name -> feature_id -> GPU Batch
@@ -27,11 +32,18 @@ class RenderPipeline:
         # Track objects that need batch rebuilding
         self._dirty_objects: Set[str] = set()
     
-    def _ensure_shader(self):
-        """Initialize shader when GPU context is available"""
-        if self.shader is None:
-            # Blender 4.0+
-            self.shader = gpu.shader.from_builtin("SMOOTH_COLOR")
+    def _ensure_shaders(self):
+        """Initialize specialized shaders using official builtins"""
+        if self.shaders[PrimitiveType.TRIS] is None:
+            # Standard smooth color for triangles
+            self.shaders[PrimitiveType.TRIS] = gpu.shader.from_builtin("SMOOTH_COLOR")
+            
+            # Polyline shader for consistent width
+            self.shaders[PrimitiveType.LINES] = gpu.shader.from_builtin("POLYLINE_SMOOTH_COLOR")
+                
+            # Native Point shader for vertices
+            # In Blender 4.x/5.x, POINT_FLAT_COLOR is the correct builtin
+            self.shaders[PrimitiveType.POINTS] = gpu.shader.from_builtin("POINT_FLAT_COLOR")
     
     def start(self):
         """Start the render pipeline"""
@@ -42,7 +54,7 @@ class RenderPipeline:
         self._handle = bpy.types.SpaceView3D.draw_handler_add(
             self._draw, (), "WINDOW", "POST_VIEW"
         )
-        logger.debug("Render pipeline started")
+        logger.debug("Render pipeline started (Native Point Shader)")
     
     def stop(self):
         """Stop the render pipeline"""
@@ -55,7 +67,6 @@ class RenderPipeline:
             self._handle = None
         
         self.clear_all()
-        logger.debug("Render pipeline stopped")
     
     def clear_all(self):
         """Clear all render data"""
@@ -94,16 +105,14 @@ class RenderPipeline:
         self._dirty_objects.add(obj_name)
     
     def _update_batches(self):
-        """Rebuild GPU batches for all dirty objects"""
+        """Rebuild GPU batches using native primitives"""
         if not self._dirty_objects:
             return
             
-        self._ensure_shader()
-        if not self.shader:
-            return
-            
+        self._ensure_shaders()
+        
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
-        offset = props.overlay_offset
+        offset_val = props.overlay_offset
         
         for obj_name in list(self._dirty_objects):
             if obj_name not in self.render_data:
@@ -113,26 +122,20 @@ class RenderPipeline:
                 self.gpu_batches[obj_name] = {}
             
             for feature, data in self.render_data[obj_name].items():
-                # Apply offset in local space
-                offset_verts = data.vertices + data.normals * offset
+                offset_verts = data.vertices + data.normals * offset_val
                 
-                try:
-                    batch = batch_for_shader(
-                        self.shader,
-                        data.primitive_type.value,
-                        {
-                            "pos": offset_verts,
-                            "color": data.colors
-                        }
-                    )
-                    self.gpu_batches[obj_name][feature] = batch
-                except Exception as e:
-                    logger.error(f"Failed to create batch for {obj_name}:{feature}: {e}")
+                batch = batch_for_shader(
+                    self.shaders[data.primitive_type],
+                    data.primitive_type.value,
+                    {"pos": offset_verts, "color": data.colors}
+                )
+                
+                self.gpu_batches[obj_name][feature] = batch
         
         self._dirty_objects.clear()
 
     def _draw(self):
-        """Main draw callback - iterates over all selected mesh objects"""
+        """Main draw callback"""
         if not self.is_running:
             return
         
@@ -140,62 +143,86 @@ class RenderPipeline:
         if not selected_objs:
             return
             
-        # Ensure batches are built for everything that needs it
         if self._dirty_objects:
             self._update_batches()
-            
-        self._ensure_shader()
-        if not self.shader:
-            return
+        self._ensure_shaders()
         
+        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+        v_radius = props.overlay_vertex_radius
         region_3d = bpy.context.region_data
         view_matrix = region_3d.view_matrix
         proj_matrix = region_3d.window_matrix
+        viewport_size = gpu.state.viewport_get()[2:]
         
-        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
-        
-        # Shader bind once
-        self.shader.bind()
-
-        # Set GPU state
         gpu.state.blend_set("ALPHA")
         gpu.state.depth_test_set("LESS_EQUAL")
         gpu.state.face_culling_set("BACK")
-        gpu.state.point_size_set(props.overlay_vertex_radius)
-        gpu.state.line_width_set(props.overlay_edge_width)
-        
-        # Set uniform and draw for each selected object
-        for obj in selected_objs:
-            if obj.name not in self.gpu_batches:
-                continue
-                
-            # MVP = Project * View * Model
-            mvp_matrix = proj_matrix @ view_matrix @ obj.matrix_world
+
+        # 1. DRAW TRIS (Faces)
+        if self.shaders[PrimitiveType.TRIS]:
+            shader = self.shaders[PrimitiveType.TRIS]
+            shader.bind()
+            self._draw_for_type(shader, PrimitiveType.TRIS, selected_objs, view_matrix, proj_matrix)
+
+        # 2. DRAW LINES (Edges)
+        if self.shaders[PrimitiveType.LINES]:
+            shader = self.shaders[PrimitiveType.LINES]
+            shader.bind()
+            try: shader.uniform_float("viewportSize", viewport_size)
+            except: pass
+            try: shader.uniform_float("lineWidth", props.overlay_edge_width)
+            except: pass
+            self._draw_for_type(shader, PrimitiveType.LINES, selected_objs, view_matrix, proj_matrix)
+
+        # 3. DRAW POINTS (Native Vertex indicators)
+        if self.shaders[PrimitiveType.POINTS]:
+            shader = self.shaders[PrimitiveType.POINTS]
+            shader.bind()
             
-            # Set MVP uniform
-            try:
-                self.shader.uniform_float("u_ModelViewProjectionMatrix", mvp_matrix)
-            except ValueError:
-                try:
-                    self.shader.uniform_float("ModelViewProjectionMatrix", mvp_matrix)
-                except ValueError:
-                    pass
+            # Pass radius and viewport size
+            # Modern point shaders usually take 'radius' or 'size'
+            try: shader.uniform_float("viewportSize", viewport_size)
+            except: pass
             
-            # Draw all batches for this object
-            for batch in self.gpu_batches[obj.name].values():
-                if batch:
-                    batch.draw(self.shader)
+            # Try setting the size using all common modern uniform names
+            try: shader.uniform_float("radius", v_radius)
+            except:
+                try: shader.uniform_float("pointSize", v_radius)
+                except:
+                    try: shader.uniform_float("size", v_radius)
+                    except: pass
+            
+            # Fallback for state-based sizing
+            gpu.state.point_size_set(v_radius)
+            
+            self._draw_for_type(shader, PrimitiveType.POINTS, selected_objs, view_matrix, proj_matrix)
         
-        # Reset GPU state
         gpu.state.blend_set("NONE")
         gpu.state.face_culling_set("NONE")
     
+    def _draw_for_type(self, shader, prim_type, selected_objs, view_matrix, proj_matrix):
+        """Helper to draw batches of a specific type for all objects"""
+        for obj in selected_objs:
+            obj_batches = self.gpu_batches.get(obj.name, {})
+            obj_data = self.render_data.get(obj.name, {})
+            
+            mvp = proj_matrix @ view_matrix @ obj.matrix_world
+            
+            # Set MVP
+            try: shader.uniform_float("u_ModelViewProjectionMatrix", mvp)
+            except:
+                try: shader.uniform_float("ModelViewProjectionMatrix", mvp)
+                except: pass
+            
+            for feature_id, batch in obj_batches.items():
+                data = obj_data.get(feature_id)
+                if data and data.primitive_type == prim_type:
+                    batch.draw(shader)
+
     def mark_geometry_dirty(self, feature: str = None):
-        """Signal that batches need rebuilding for all objects"""
         for obj_name in self.render_data:
             self._dirty_objects.add(obj_name)
     
     def mark_properties_dirty(self, feature: str = None):
-        """Signal that batches need rebuilding for all objects"""
         for obj_name in self.render_data:
             self._dirty_objects.add(obj_name)
