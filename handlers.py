@@ -22,8 +22,6 @@ if not logger.handlers:
 # Used as a callback for depsgraph updates
 @persistent
 def update_analysis_overlay(scene, depsgraph):
-    if bpy.context.mode == "EDIT_MESH":
-        return
     if not overlay_controller.is_running:
         return
     
@@ -41,8 +39,19 @@ def update_analysis_overlay(scene, depsgraph):
             if obj.name in overlay_controller.displayed_objects and update.is_updated_geometry:
                 # Clear statistics cache when geometry changes
                 Mesh_Analysis_Overlay_Panel.clear_stats_cache()
+                
+                # In Edit Mode, we need to ensure the mesh data is up to date for analysis
+                if obj.mode == 'EDIT':
+                    obj.update_from_editmesh()
+                
                 logger.debug(f"*** GEOMETRY CHANGE DETECTED: {obj.name} ***")
                 overlay_controller.handle_geometry_change(obj)
+                
+                # Signal redraw
+                for window in bpy.context.window_manager.windows:
+                    for area in window.screen.areas:
+                        if area.type == 'VIEW_3D':
+                            area.tag_redraw()
 
 
 # Used as a callback for property updates in properties.py
@@ -101,7 +110,7 @@ def update_non_planar_threshold(self, context):
                 area.tag_redraw()
 
 
-@bpy.app.handlers.depsgraph_update_post.append
+@persistent
 def update_mesh_analysis_stats(scene, depsgraph):
     # Only process if there are updates to objects
     if not depsgraph.updates:
@@ -118,40 +127,10 @@ def update_mesh_analysis_stats(scene, depsgraph):
             del Mesh_Analysis_Overlay_Panel._stats_cache[update.id.name]
 
 
-@persistent
-def handle_edit_mode_changes(scene, depsgraph):
-    """Handler for when the edit mode changes
-    Avoids index error when trying to select deleted element before a refresh
-    """
-    if bpy.context.mode != "EDIT_MESH":
-        return
-
-    for update in depsgraph.updates:
-        if not isinstance(update.id, bpy.types.Object) or update.id.type != "MESH":
-            continue
-
-        obj = update.id
-        if not obj or not update.is_updated_geometry:
-            continue
-
-        bm = bmesh.from_edit_mesh(obj.data)
-        stats = overlay_controller.get_mesh_stats(obj)
-
-        # Check if elements were deleted
-        if (
-            len(bm.verts) < stats["verts"]
-            or len(bm.edges) < stats["edges"]
-            or len(bm.faces) < stats["faces"]
-        ):
-            Mesh_Analysis_Overlay_Panel.clear_stats_cache()
-            overlay_controller.analysis_engine.invalidate_cache(obj.name)
-            if overlay_controller.is_running:
-                overlay_controller.handle_geometry_change(obj)
-
-
 def register():
     logger.debug("\n=== Registering Handlers ===")
-    bpy.app.handlers.depsgraph_update_post.append(update_analysis_overlay)
+    if update_analysis_overlay not in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.append(update_analysis_overlay)
     if update_mesh_analysis_stats not in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.append(update_mesh_analysis_stats)
 
