@@ -51,12 +51,11 @@ def update_overlay_enabled_toggles(self, context):
         return
     logger.debug("\n=== Toggle Enabled Update Handler ===")
 
-    if context and context.active_object:
-        obj = context.active_object
-        if obj and obj.type == "MESH":
-            # Clear statistics cache when features are toggled
-            Mesh_Analysis_Overlay_Panel.clear_stats_cache()
-            overlay_controller.handle_property_change()
+    # Clear statistics cache when features are toggled
+    Mesh_Analysis_Overlay_Panel.clear_stats_cache()
+    
+    # Update overlays for all selected meshes
+    overlay_controller.update_all_selected()
     
     if context and context.area:
         context.area.tag_redraw()
@@ -84,6 +83,9 @@ def update_non_planar_threshold(self, context):
         return
 
     logger.debug("\n=== Non-Planar Threshold Update Handler ===")
+    
+    # Clear statistics cache
+    Mesh_Analysis_Overlay_Panel.clear_stats_cache()
     
     # Invalidate non-planar cache for all currently tracked objects
     for obj_name in list(overlay_controller.displayed_objects):

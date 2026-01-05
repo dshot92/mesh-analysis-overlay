@@ -88,56 +88,60 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             panel.prop(props, "non_planar_threshold", text="Non-Planar Threshold")
 
     def draw_statistics(self, context, panel):
-        """Draw statistics using cached values when possible"""
-        if not (
-            overlay_controller.is_running
-            and context.active_object
-            and context.active_object.type == "MESH"
-        ):
+        """Draw statistics for all selected mesh objects"""
+        if not overlay_controller.is_running:
             panel.label(text="Enable overlay to see statistics")
             return
 
-        obj = context.active_object
+        selected_meshes = [obj for obj in context.selected_objects if obj.type == "MESH"]
+        if not selected_meshes:
+            panel.label(text="Select a mesh to see statistics")
+            return
+
         props = context.scene.Mesh_Analysis_Overlay_Properties
+        analysis_engine = overlay_controller.analysis_engine
 
-        # Get cached stats or calculate new ones
-        if obj.name not in self._stats_cache:
-            analysis_engine = overlay_controller.analysis_engine
-            stats = {"mode": context.mode, "features": {}}
+        for obj in selected_meshes:
+            # Get cached stats or calculate new ones
+            if obj.name not in self._stats_cache:
+                stats = {"features": {}}
 
-            # Use FEATURE_DATA order for consistency
-            for category, features in FEATURE_DATA.items():
-                active_features = [
-                    feature["id"]
-                    for feature in features
-                    if getattr(props, f"{feature['id']}_enabled", False)
-                ]
-                if active_features:
-                    analysis_results = analysis_engine.analyze_mesh(obj, active_features)
-                    stats["features"][category.title()] = {
-                        feature: len(result.indices) if feature in analysis_results else 0
-                        for feature in active_features
-                    }
+                for category, features in FEATURE_DATA.items():
+                    active_features = [
+                        feature["id"]
+                        for feature in features
+                        if getattr(props, f"{feature['id']}_enabled", False)
+                    ]
+                    if active_features:
+                        analysis_results = analysis_engine.analyze_mesh(obj, active_features)
+                        stats["features"][category.title()] = {
+                            feature["label"]: len(analysis_results[feature["id"]].indices) 
+                            if feature["id"] in analysis_results else 0
+                            for feature in features if feature["id"] in active_features
+                        }
+                
+                self._stats_cache[obj.name] = stats
 
-            self._stats_cache[obj.name] = stats
+            # Draw statistics from cache
+            stats = self._stats_cache[obj.name]
+            if not stats["features"]:
+                continue
 
-        # Draw statistics from cache
-        stats = self._stats_cache[obj.name]
-        box = panel.box()
-
-        # Draw in same order as FEATURE_DATA
-        for category in FEATURE_DATA.keys():
-            category_title = category.title()
-            if (
-                category_title in stats["features"]
-                and stats["features"][category_title]
-            ):
+            box = panel.box()
+            row = box.row()
+            row.label(text=obj.name, icon="MESH_DATA")
+            
+            for category_title, features in stats["features"].items():
+                if not features:
+                    continue
+                    
                 col = box.column(align=True)
                 col.label(text=f"{category_title}:")
-                for feature_name, count in stats["features"][category_title].items():
-                    row = col.row()
-                    row.label(text=feature_name.replace("_", " ").title())
-                    row.label(text=str(count))
+                for label, count in features.items():
+                    r = col.row()
+                    r.separator()
+                    r.label(text=label)
+                    r.label(text=str(count))
 
 
 classes = (Mesh_Analysis_Overlay_Panel,)
