@@ -19,16 +19,16 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         for feature in features:
             exec(
                 f"""
-{feature['id']}_enabled: BoolProperty(
-    name="Show {feature['label']}",
-    description="{feature['description']}",
+{feature["id"]}_enabled: BoolProperty(
+    name="Show {feature["label"]}",
+    description="{feature["description"]}",
     default=False,
     update=handlers.update_overlay_enabled_toggles,
 )
-{feature['id']}_color: FloatVectorProperty(
-    name="{feature['label']} Color",
+{feature["id"]}_color: FloatVectorProperty(
+    name="{feature["label"]} Color",
     subtype="COLOR",
-    default={feature['default_color']},
+    default={feature["default_color"]},
     size=4,
     min=0.0,
     max=1.0,

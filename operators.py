@@ -62,11 +62,11 @@ class Select_Feature_Elements(bpy.types.Operator):
             return {"CANCELLED"}
 
         # Ensure we are in Edit Mode for selection
-        was_edit = (obj.mode == 'EDIT')
+        was_edit = obj.mode == "EDIT"
         if not was_edit:
             bpy.ops.object.mode_set(mode="EDIT")
             # Default to vertex select if we had to switch
-            bpy.ops.mesh.select_mode(type='VERT')
+            bpy.ops.mesh.select_mode(type="VERT")
 
         mesh = obj.data
         bm = bmesh.from_edit_mesh(mesh)
@@ -77,7 +77,7 @@ class Select_Feature_Elements(bpy.types.Operator):
         # Use the controller's engine to benefit from caching
         analysis_engine = overlay_controller.analysis_engine
         analysis_results = analysis_engine.analyze_mesh(obj, [self.feature])
-        
+
         if self.feature not in analysis_results:
             # Still update in case user expects a clear on 'SET'
             if self.mode == "SET":
@@ -87,20 +87,23 @@ class Select_Feature_Elements(bpy.types.Operator):
                 bmesh.update_edit_mesh(mesh)
             self.report({"INFO"}, f"No {self.feature} elements found")
             return {"FINISHED"}
-        
+
         result = analysis_results[self.feature]
         indices = result.indices
         feature_type = result.feature_type
-        
+
         # 1. Handle selection reset for "SET" mode
         if self.mode == "SET":
-            for v in bm.verts: v.select = False
-            for e in bm.edges: e.select = False
-            for f in bm.faces: f.select = False
+            for v in bm.verts:
+                v.select = False
+            for e in bm.edges:
+                e.select = False
+            for f in bm.faces:
+                f.select = False
 
         # 2. Apply selection change
-        select_val = (self.mode != "SUB")
-        
+        select_val = self.mode != "SUB"
+
         if feature_type == FeatureType.FACE:
             for idx in indices:
                 if idx < len(bm.faces):
@@ -120,10 +123,10 @@ class Select_Feature_Elements(bpy.types.Operator):
 
         # 3. CRITICAL: Push changes back to the mesh
         bmesh.update_edit_mesh(mesh)
-        
+
         # Trigger overlay update if in edit mode to reflect potentially changed visibility (though usually selection doesn't change geometry)
         overlay_controller.update_overlay(obj)
-        
+
         return {"FINISHED"}
 
 

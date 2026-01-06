@@ -74,7 +74,9 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             panel.label(text="Enable overlay to see statistics")
             return
 
-        selected_meshes = [obj for obj in context.selected_objects if obj.type == "MESH"]
+        selected_meshes = [
+            obj for obj in context.selected_objects if obj.type == "MESH"
+        ]
         if not selected_meshes:
             panel.label(text="Select a mesh to see statistics")
             return
@@ -94,13 +96,19 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
                         if getattr(props, f"{feature['id']}_enabled", False)
                     ]
                     if active_features:
-                        analysis_results = analysis_engine.analyze_mesh(obj, active_features)
+                        analysis_results = analysis_engine.analyze_mesh(
+                            obj, active_features
+                        )
                         stats["features"][category.title()] = {
-                            feature["label"]: len(analysis_results[feature["id"]].indices) 
-                            if feature["id"] in analysis_results else 0
-                            for feature in features if feature["id"] in active_features
+                            feature["label"]: len(
+                                analysis_results[feature["id"]].indices
+                            )
+                            if feature["id"] in analysis_results
+                            else 0
+                            for feature in features
+                            if feature["id"] in active_features
                         }
-                
+
                 self._stats_cache[obj.name] = stats
 
             # Draw statistics from cache
@@ -111,11 +119,11 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             box = panel.box()
             row = box.row()
             row.label(text=obj.name, icon="MESH_DATA")
-            
+
             for category_title, features in stats["features"].items():
                 if not features:
                     continue
-                    
+
                 col = box.column(align=True)
                 col.label(text=f"{category_title}:")
                 for label, count in features.items():

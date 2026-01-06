@@ -6,16 +6,13 @@ import numpy as np
 from typing import Dict, Set
 from gpu_extras.batch import batch_for_shader
 from bpy.types import Object
-import logging
 
 from .render_system import PrimitiveType, RenderData
-
-logger = logging.getLogger(__name__)
 
 
 class RenderPipeline:
     """Modern rendering pipeline using native POINT shaders"""
-    
+
     def __init__(self):
         # Shaders for different primitive types
         self.shaders = {
@@ -31,42 +28,46 @@ class RenderPipeline:
         self._handle = None
         # Track objects that need batch rebuilding
         self._dirty_objects: Set[str] = set()
-    
+
     def _ensure_shaders(self):
         """Initialize specialized shaders using official builtins"""
         if self.shaders[PrimitiveType.TRIS] is None:
             # Standard smooth color for triangles
             self.shaders[PrimitiveType.TRIS] = gpu.shader.from_builtin("SMOOTH_COLOR")
-            
+
             # Polyline shader for consistent width
-            self.shaders[PrimitiveType.LINES] = gpu.shader.from_builtin("POLYLINE_SMOOTH_COLOR")
-                
+            self.shaders[PrimitiveType.LINES] = gpu.shader.from_builtin(
+                "POLYLINE_SMOOTH_COLOR"
+            )
+
             # Native Point shader for vertices
             # In Blender 4.x/5.x, POINT_FLAT_COLOR is the correct builtin
-            self.shaders[PrimitiveType.POINTS] = gpu.shader.from_builtin("POINT_FLAT_COLOR")
-    
+            self.shaders[PrimitiveType.POINTS] = gpu.shader.from_builtin(
+                "POINT_FLAT_COLOR"
+            )
+
     def start(self):
         """Start the render pipeline"""
         if self.is_running:
             return
-            
+
         self.is_running = True
         self._handle = bpy.types.SpaceView3D.draw_handler_add(
             self._draw, (), "WINDOW", "POST_VIEW"
         )
-    
+
     def stop(self):
         """Stop the render pipeline"""
         if not self.is_running:
             return
-            
+
         self.is_running = False
         if self._handle:
             bpy.types.SpaceView3D.draw_handler_remove(self._handle, "WINDOW")
             self._handle = None
-        
+
         self.clear_all()
-    
+
     def clear_all(self):
         """Clear all render data"""
         self.render_data.clear()
@@ -81,78 +82,87 @@ class RenderPipeline:
             del self.gpu_batches[obj_name]
         if obj_name in self._dirty_objects:
             self._dirty_objects.remove(obj_name)
-    
-    def update_feature_data(self, obj_name: str, feature: str, vertices: np.ndarray, 
-                          normals: np.ndarray, colors: np.ndarray, primitive_type: PrimitiveType):
+
+    def update_feature_data(
+        self,
+        obj_name: str,
+        feature: str,
+        vertices: np.ndarray,
+        normals: np.ndarray,
+        colors: np.ndarray,
+        primitive_type: PrimitiveType,
+    ):
         """Update render data for a specific object and feature"""
         if obj_name not in self.render_data:
             self.render_data[obj_name] = {}
-        
+
         if len(vertices) == 0:
             if feature in self.render_data[obj_name]:
                 del self.render_data[obj_name][feature]
             if obj_name in self.gpu_batches and feature in self.gpu_batches[obj_name]:
                 del self.gpu_batches[obj_name][feature]
             return
-        
+
         self.render_data[obj_name][feature] = RenderData(
             vertices=vertices.astype(np.float32),
             normals=normals.astype(np.float32),
             colors=colors.astype(np.float32),
-            primitive_type=primitive_type
+            primitive_type=primitive_type,
         )
         self._dirty_objects.add(obj_name)
-    
+
     def _update_batches(self):
         """Rebuild GPU batches using native primitives"""
         if not self._dirty_objects:
             return
-            
+
         self._ensure_shaders()
-        
+
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
         offset_val = props.overlay_offset
-        
+
         for obj_name in list(self._dirty_objects):
             if obj_name not in self.render_data:
                 continue
-            
+
             if obj_name not in self.gpu_batches:
                 self.gpu_batches[obj_name] = {}
-            
+
             for feature, data in self.render_data[obj_name].items():
                 offset_verts = data.vertices + data.normals * offset_val
-                
+
                 batch = batch_for_shader(
                     self.shaders[data.primitive_type],
                     data.primitive_type.value,
-                    {"pos": offset_verts, "color": data.colors}
+                    {"pos": offset_verts, "color": data.colors},
                 )
-                
+
                 self.gpu_batches[obj_name][feature] = batch
-        
+
         self._dirty_objects.clear()
 
     def _draw(self):
         """Main draw callback"""
         if not self.is_running:
             return
-        
-        selected_objs = [obj for obj in bpy.context.selected_objects if obj.type == "MESH"]
+
+        selected_objs = [
+            obj for obj in bpy.context.selected_objects if obj.type == "MESH"
+        ]
         if not selected_objs:
             return
-            
+
         if self._dirty_objects:
             self._update_batches()
         self._ensure_shaders()
-        
+
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
         v_radius = props.overlay_vertex_radius
         region_3d = bpy.context.region_data
         view_matrix = region_3d.view_matrix
         proj_matrix = region_3d.window_matrix
         viewport_size = gpu.state.viewport_get()[2:]
-        
+
         gpu.state.blend_set("ALPHA")
         gpu.state.depth_test_set("LESS_EQUAL")
         gpu.state.face_culling_set("BACK")
@@ -161,58 +171,79 @@ class RenderPipeline:
         if self.shaders[PrimitiveType.TRIS]:
             shader = self.shaders[PrimitiveType.TRIS]
             shader.bind()
-            self._draw_for_type(shader, PrimitiveType.TRIS, selected_objs, view_matrix, proj_matrix)
+            self._draw_for_type(
+                shader, PrimitiveType.TRIS, selected_objs, view_matrix, proj_matrix
+            )
 
         # 2. DRAW LINES (Edges)
         if self.shaders[PrimitiveType.LINES]:
             shader = self.shaders[PrimitiveType.LINES]
             shader.bind()
-            try: shader.uniform_float("viewportSize", viewport_size)
-            except: pass
-            try: shader.uniform_float("lineWidth", props.overlay_edge_width)
-            except: pass
-            self._draw_for_type(shader, PrimitiveType.LINES, selected_objs, view_matrix, proj_matrix)
+            try:
+                shader.uniform_float("viewportSize", viewport_size)
+            except:
+                pass
+            try:
+                shader.uniform_float("lineWidth", props.overlay_edge_width)
+            except:
+                pass
+            self._draw_for_type(
+                shader, PrimitiveType.LINES, selected_objs, view_matrix, proj_matrix
+            )
 
         # 3. DRAW POINTS (Native Vertex indicators)
         if self.shaders[PrimitiveType.POINTS]:
             shader = self.shaders[PrimitiveType.POINTS]
             shader.bind()
-            
+
             # Pass radius and viewport size
             # Modern point shaders usually take 'radius' or 'size'
-            try: shader.uniform_float("viewportSize", viewport_size)
-            except: pass
-            
-            # Try setting the size using all common modern uniform names
-            try: shader.uniform_float("radius", v_radius)
+            try:
+                shader.uniform_float("viewportSize", viewport_size)
             except:
-                try: shader.uniform_float("pointSize", v_radius)
+                pass
+
+            # Try setting the size using all common modern uniform names
+            try:
+                shader.uniform_float("radius", v_radius)
+            except:
+                try:
+                    shader.uniform_float("pointSize", v_radius)
                 except:
-                    try: shader.uniform_float("size", v_radius)
-                    except: pass
-            
+                    try:
+                        shader.uniform_float("size", v_radius)
+                    except:
+                        pass
+
             # Fallback for state-based sizing
             gpu.state.point_size_set(v_radius)
-            
-            self._draw_for_type(shader, PrimitiveType.POINTS, selected_objs, view_matrix, proj_matrix)
-        
+
+            self._draw_for_type(
+                shader, PrimitiveType.POINTS, selected_objs, view_matrix, proj_matrix
+            )
+
         gpu.state.blend_set("NONE")
         gpu.state.face_culling_set("NONE")
-    
-    def _draw_for_type(self, shader, prim_type, selected_objs, view_matrix, proj_matrix):
+
+    def _draw_for_type(
+        self, shader, prim_type, selected_objs, view_matrix, proj_matrix
+    ):
         """Helper to draw batches of a specific type for all objects"""
         for obj in selected_objs:
             obj_batches = self.gpu_batches.get(obj.name, {})
             obj_data = self.render_data.get(obj.name, {})
-            
+
             mvp = proj_matrix @ view_matrix @ obj.matrix_world
-            
+
             # Set MVP
-            try: shader.uniform_float("u_ModelViewProjectionMatrix", mvp)
+            try:
+                shader.uniform_float("u_ModelViewProjectionMatrix", mvp)
             except:
-                try: shader.uniform_float("ModelViewProjectionMatrix", mvp)
-                except: pass
-            
+                try:
+                    shader.uniform_float("ModelViewProjectionMatrix", mvp)
+                except:
+                    pass
+
             for feature_id, batch in obj_batches.items():
                 data = obj_data.get(feature_id)
                 if data and data.primitive_type == prim_type:
@@ -221,7 +252,7 @@ class RenderPipeline:
     def mark_geometry_dirty(self, feature: str = None):
         for obj_name in self.render_data:
             self._dirty_objects.add(obj_name)
-    
+
     def mark_properties_dirty(self, feature: str = None):
         for obj_name in self.render_data:
             self._dirty_objects.add(obj_name)

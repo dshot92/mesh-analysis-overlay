@@ -1,40 +1,41 @@
 import bpy
-import logging
 
 from bpy.app.handlers import persistent
 from .overlay_controller import overlay_controller
 from .panels import Mesh_Analysis_Overlay_Panel
 
-logger = logging.getLogger(__name__)
 
 @persistent
 def update_analysis_overlay(scene, depsgraph):
     """Primary depsgraph callback. Optimized for real-time Edit Mode tracking."""
     if not overlay_controller.is_running:
         return
-    
+
     # 1. Update selection state
-    current_names = {obj.name for obj in bpy.context.selected_objects if obj.type == "MESH"}
+    current_names = {
+        obj.name for obj in bpy.context.selected_objects if obj.type == "MESH"
+    }
     selection_changed = current_names != overlay_controller.displayed_objects
-    
+
     if selection_changed:
         overlay_controller.update_all_selected()
 
     # 2. Identify objects needing a geometry/analysis update
     dirty_objects = set()
-    
-    # In Edit Mode, we are more aggressive: any depsgraph update while 
+
+    # In Edit Mode, we are more aggressive: any depsgraph update while
     # the object is displayed means we should check for changes.
     for name in overlay_controller.displayed_objects:
         obj = bpy.data.objects.get(name)
-        if not obj: continue
-        
-        # In Edit Mode, the modeling buffer is live, so we treat it as potentially dirty 
+        if not obj:
+            continue
+
+        # In Edit Mode, the modeling buffer is live, so we treat it as potentially dirty
         # whenever Blender notifies us of a change in the viewport.
-        if obj.mode == 'EDIT':
+        if obj.mode == "EDIT":
             dirty_objects.add(obj)
             continue
-            
+
         # For Object Mode, we use standard depsgraph update tracking
         for update in depsgraph.updates:
             if update.id == obj or update.id == obj.data:
@@ -56,28 +57,31 @@ def update_analysis_overlay(scene, depsgraph):
 
 def update_overlay_enabled_toggles(self, context):
     """Callback for feature property toggles."""
-    if not overlay_controller.is_running: return
+    if not overlay_controller.is_running:
+        return
     Mesh_Analysis_Overlay_Panel.clear_stats_cache()
     overlay_controller.update_all_selected()
-    if context and hasattr(context, 'area') and context.area:
+    if context and hasattr(context, "area") and context.area:
         context.area.tag_redraw()
 
 
 def update_overlay_offset(self, context):
     """Callback for visual property updates (offset, size, etc.)"""
-    if not overlay_controller.is_running: return
+    if not overlay_controller.is_running:
+        return
     overlay_controller.handle_property_change()
     tag_redraw_viewports()
 
 
 def update_non_planar_threshold(self, context):
     """Special handler for threshold changes requiring partial re-analysis"""
-    if not overlay_controller.is_running: return
-    
+    if not overlay_controller.is_running:
+        return
+
     Mesh_Analysis_Overlay_Panel.clear_stats_cache()
     for name in list(overlay_controller.displayed_objects):
         overlay_controller.analysis_engine.invalidate_cache(name, ["non_planar_faces"])
-    
+
     overlay_controller.update_all_selected()
     tag_redraw_viewports()
 
@@ -86,7 +90,7 @@ def tag_redraw_viewports():
     """Trigger redraw for all 3D viewports"""
     for window in bpy.context.window_manager.windows:
         for area in window.screen.areas:
-            if area.type == 'VIEW_3D':
+            if area.type == "VIEW_3D":
                 area.tag_redraw()
 
 
