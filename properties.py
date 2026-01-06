@@ -32,6 +32,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     size=4,
     min=0.0,
     max=1.0,
+    update=handlers.update_overlay_offset,
 )
 """
             )
