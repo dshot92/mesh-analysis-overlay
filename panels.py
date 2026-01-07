@@ -11,7 +11,7 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
     bl_idname = "VIEW3D_PT_mesh_analysis_overlay"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Mesh Analysis Overlay"
+    bl_category = "Edit"
 
     _stats_cache = {}  # Class variable to store statistics
 
