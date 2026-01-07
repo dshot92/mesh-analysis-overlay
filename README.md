@@ -1,7 +1,7 @@
 ![image](https://i.imgur.com/5kY3v6G.jpeg)
 # Mesh Analysis Overlay
 
-'N-Panel -> Edit -> Mesh Analysis Overlay'
+`N-Panel -> Edit -> Mesh Analysis Overlay`
 
 ### Face Overlays
 - Triangles
