@@ -36,18 +36,21 @@ def update_analysis_overlay(scene, depsgraph):
             dirty_objects.add(obj)
             continue
 
-        # For Object Mode, we use standard depsgraph update tracking
+        # For Object Mode, check for any updates that might affect the mesh
         for update in depsgraph.updates:
             if update.id == obj or update.id == obj.data:
                 if update.is_updated_geometry or update.is_updated_transform:
                     dirty_objects.add(obj)
                     break
+        
+        # Always update objects with modifiers to ensure depsgraph changes are reflected
+        if obj not in dirty_objects and obj.modifiers and obj.mode != "EDIT":
+            dirty_objects.add(obj)
 
     # 3. Process all dirty objects
     if dirty_objects:
         Mesh_Analysis_Overlay_Panel.clear_stats_cache()
         for obj in dirty_objects:
-            # We invalidate and then update. Analysis happens on the BMesh buffer.
             overlay_controller.handle_geometry_change(obj)
 
     # 4. Trigger redraws

@@ -84,7 +84,7 @@ class MeshAnalysisEngine:
         return results
 
     def _analyze_feature_impl(self, obj: Object, feature: str) -> Optional[np.ndarray]:
-        """Implement feature analysis with Edit Mode awareness"""
+        """Implement feature analysis using evaluated mesh data"""
         try:
             # Determine if we should use the live Edit Mode buffer
             is_edit_mode = obj.mode == "EDIT" and obj.data.is_editmode
@@ -93,23 +93,34 @@ class MeshAnalysisEngine:
                 # Use the fast, live pointer to the edit mesh
                 bm = bmesh.from_edit_mesh(obj.data)
             else:
-                # Standard path: create a copy from mesh data
-                bm = bmesh.new()
-                bm.from_mesh(obj.data)
+                # Use evaluated mesh from depsgraph (what you see in viewport)
+                depsgraph = bpy.context.evaluated_depsgraph_get()
+                evaluated_obj = obj.evaluated_get(depsgraph)
+                mesh = evaluated_obj.to_mesh()
+                
+                try:
+                    bm = bmesh.new()
+                    bm.from_mesh(mesh)
+                    
+                    bm.edges.ensure_lookup_table()
+                    bm.faces.ensure_lookup_table()
+                    bm.verts.ensure_lookup_table()
+                    
+                    indices = self._analyze_with_bmesh(bm, feature)
+                    
+                    bm.free()
+                    
+                    if indices:
+                        return np.array(indices, dtype=np.int32)
+                    return None
+                finally:
+                    evaluated_obj.to_mesh_clear()
 
             bm.edges.ensure_lookup_table()
             bm.faces.ensure_lookup_table()
             bm.verts.ensure_lookup_table()
-
-            indices = []
-            feature_type = self.feature_types[feature]
-
-            if feature_type == FeatureType.VERTEX:
-                indices = self._analyze_vertex_features(bm, feature)
-            elif feature_type == FeatureType.EDGE:
-                indices = self._analyze_edge_features(bm, feature)
-            elif feature_type == FeatureType.FACE:
-                indices = self._analyze_face_features(bm, feature)
+            
+            indices = self._analyze_with_bmesh(bm, feature)
 
             # Only free if we created a temporary BMesh (Object Mode)
             if not is_edit_mode:
@@ -222,6 +233,20 @@ class MeshAnalysisEngine:
             return True
 
         return False
+
+    def _analyze_with_bmesh(self, bm: bmesh.types.BMesh, feature: str) -> List[int]:
+        """Analyze features using a BMesh"""
+        indices = []
+        feature_type = self.feature_types[feature]
+
+        if feature_type == FeatureType.VERTEX:
+            indices = self._analyze_vertex_features(bm, feature)
+        elif feature_type == FeatureType.EDGE:
+            indices = self._analyze_edge_features(bm, feature)
+        elif feature_type == FeatureType.FACE:
+            indices = self._analyze_face_features(bm, feature)
+
+        return indices
 
     def invalidate_cache(self, obj_name: str, features: Optional[List[str]] = None):
         """Invalidate cache for specific object and features"""

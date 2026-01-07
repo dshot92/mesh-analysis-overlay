@@ -15,9 +15,34 @@ class GeometryProcessor:
     """Utilities for converting mesh analysis to GPU-ready arrays via NumPy"""
 
     @staticmethod
-    def _get_mesh_data(obj: Object) -> Dict[str, np.ndarray]:
-        """Extract live mesh data, handling Edit Mode specifically to ensure zero-lag following"""
+    def _get_mesh_data(obj: Object, use_modifiers: bool = False) -> Dict[str, np.ndarray]:
+        """Extract mesh data, optionally with modifiers applied"""
         is_edit_mode = obj.mode == "EDIT" and obj.data.is_editmode
+
+        # In Object Mode, always use evaluated mesh from depsgraph (what you see in viewport)
+        if obj.mode != "EDIT":
+            depsgraph = bpy.context.evaluated_depsgraph_get()
+            evaluated_obj = obj.evaluated_get(depsgraph)
+            mesh = evaluated_obj.to_mesh()
+            
+            try:
+                v_count = len(mesh.vertices)
+                verts = np.empty(v_count * 3, dtype=np.float32)
+                mesh.vertices.foreach_get("co", verts)
+                normals = np.empty(v_count * 3, dtype=np.float32)
+                mesh.vertices.foreach_get("normal", normals)
+
+                edge_v_indices = np.empty(len(mesh.edges) * 2, dtype=np.int32)
+                mesh.edges.foreach_get("vertices", edge_v_indices)
+
+                return {
+                    "verts": verts.reshape((-1, 3)),
+                    "normals": normals.reshape((-1, 3)),
+                    "edge_v_indices": edge_v_indices.reshape((-1, 2)),
+                    "is_edit": False,
+                }
+            finally:
+                evaluated_obj.to_mesh_clear()
 
         if is_edit_mode:
             # Direct BMesh extraction is the only way to track 'G' (Grab) transforms in real-time
@@ -207,14 +232,14 @@ class OverlayController:
                     enabled_features.append(f_id)
                     feature_colors[f_id] = tuple(getattr(props, f"{f_id}_color"))
 
-        # Fetch LIVE mesh data (BMesh if in Edit Mode)
+        # Fetch evaluated mesh data (what you see in viewport)
         mesh_data = self.geometry_processor._get_mesh_data(obj)
 
         if mesh_data["is_edit"]:
             # Sync needed once for loop triangles to match current modeling topology
             obj.update_from_editmode()
 
-        # Analyze using Mode-Aware engine
+        # Analyze using evaluated mesh data
         analysis_results = self.analysis_engine.analyze_mesh(obj, enabled_features)
 
         for category, features in FEATURE_DATA.items():
