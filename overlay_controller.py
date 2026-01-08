@@ -2,12 +2,14 @@
 
 import bpy
 import numpy as np
+import bmesh
 from typing import Dict, Set
 from bpy.types import Object
 
 from .analysis_engine import MeshAnalysisEngine
 from .render_pipeline import RenderPipeline, PrimitiveType
 from .feature_data import FEATURE_DATA
+from .utils import get_updated_bmesh_from_depsgraph
 
 
 class OverlayController:
@@ -52,7 +54,7 @@ class OverlayController:
         for obj in selected_meshes:
             self.update_overlay(obj)
 
-    def update_overlay(self, obj: Object, analysis_mode: str = "OBJECT"):
+    def update_overlay(self, obj: Object):
         """Update overlay for a specific object - called by handlers only"""
         if not self.is_running or not obj or obj.type != "MESH":
             return
@@ -85,26 +87,37 @@ class OverlayController:
                     PrimitiveType.POINTS,
                 )
 
-        # Get GPU-ready data from analysis engine (handles everything)
-        gpu_results = self.analysis_engine.analyze_and_format_mesh(obj, enabled_features, feature_colors, analysis_mode)
+        # Get the most updated bmesh for this object (fallback for manual updates)
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        bm = get_updated_bmesh_from_depsgraph(obj, depsgraph)
+        
+        try:
+            # Get GPU-ready data from analysis engine with the pre-created bmesh
+            gpu_results = self.analysis_engine.analyze_and_format_mesh_with_bmesh(
+                obj, enabled_features, feature_colors, bm
+            )
 
-        # Update render pipeline with formatted data
-        for f_id in enabled_features:
-            if f_id in gpu_results:
-                gpu_data = gpu_results[f_id]
-                self.render_pipeline.update_feature_data(
-                    obj.name, f_id, gpu_data.vertices, gpu_data.normals, gpu_data.colors, gpu_data.primitive_type
-                )
-            else:
-                # Clear feature data if not found
-                self.render_pipeline.update_feature_data(
-                    obj.name,
-                    f_id,
-                    np.array([]),
-                    np.array([]),
-                    np.array([]),
-                    PrimitiveType.POINTS,
-                )
+            # Update render pipeline with formatted data
+            for f_id in enabled_features:
+                if f_id in gpu_results:
+                    gpu_data = gpu_results[f_id]
+                    self.render_pipeline.update_feature_data(
+                        obj.name, f_id, gpu_data.vertices, gpu_data.normals, gpu_data.colors, gpu_data.primitive_type
+                    )
+                else:
+                    # Clear feature data if not found
+                    self.render_pipeline.update_feature_data(
+                        obj.name,
+                        f_id,
+                        np.array([]),
+                        np.array([]),
+                        np.array([]),
+                        PrimitiveType.POINTS,
+                    )
+        finally:
+            # Clean up bmesh if we created it (edit mode bmesh is managed by Blender)
+            if obj.mode != "EDIT":
+                bm.free()
                 
 
     def get_mesh_stats(self, obj: Object) -> Dict[str, int]:

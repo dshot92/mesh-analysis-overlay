@@ -2,12 +2,16 @@
 
 import bpy
 import bmesh
+from bpy.types import Operator
+from bpy.props import StringProperty, EnumProperty
 
 from .overlay_controller import overlay_controller
+from .feature_data import FEATURE_DATA
+from .utils import get_updated_bmesh_from_depsgraph
 from .analysis_engine import FeatureType
 
 
-class Mesh_Analysis_Overlay(bpy.types.Operator):
+class Mesh_Analysis_Overlay(Operator):
     bl_idname = "view3d.mesh_analysis_overlay"
     bl_label = "Toggle Mesh Analysis Overlay"
     bl_description = (
@@ -76,7 +80,7 @@ class Select_Feature_Elements(bpy.types.Operator):
 
         # Use the controller's engine to benefit from caching
         analysis_engine = overlay_controller.analysis_engine
-        analysis_results = analysis_engine.analyze_mesh(obj, [self.feature])
+        analysis_results = analysis_engine.analyze_mesh(obj, [self.feature], bm)
 
         if self.feature not in analysis_results:
             # Still update in case user expects a clear on 'SET'

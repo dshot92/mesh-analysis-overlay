@@ -1,9 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import bpy
+import bmesh
+from typing import Dict
 
 from .overlay_controller import overlay_controller
 from .feature_data import FEATURE_DATA
+from .utils import get_updated_bmesh_from_depsgraph
 
 
 class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
@@ -96,18 +99,27 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
                         if getattr(props, f"{feature['id']}_enabled", False)
                     ]
                     if active_features:
-                        analysis_results = analysis_engine.analyze_mesh(
-                            obj, active_features
-                        )
-                        stats["features"][category.title()] = {
-                            feature["label"]: len(
-                                analysis_results[feature["id"]].indices
+                        # Get BMesh from handlers
+                        depsgraph = bpy.context.evaluated_depsgraph_get()
+                        bm = get_updated_bmesh_from_depsgraph(obj, depsgraph)
+                        
+                        try:
+                            analysis_results = analysis_engine.analyze_mesh(
+                                obj, active_features, bm
                             )
-                            if feature["id"] in analysis_results
-                            else 0
-                            for feature in features
-                            if feature["id"] in active_features
-                        }
+                            stats["features"][category.title()] = {
+                                feature["label"]: len(
+                                    analysis_results[feature["id"]].indices
+                                )
+                                if feature["id"] in analysis_results
+                                else 0
+                                for feature in features
+                                if feature["id"] in active_features
+                            }
+                        finally:
+                            # Clean up bmesh if we created it (edit mode bmesh is managed by Blender)
+                            if obj.mode != "EDIT":
+                                bm.free()
 
                 self._stats_cache[obj.name] = stats
 

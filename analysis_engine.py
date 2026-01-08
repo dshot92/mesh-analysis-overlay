@@ -66,40 +66,6 @@ class MeshAnalysisEngine:
             
         return params
 
-    def _get_updated_bmesh(self, obj: Object) -> bmesh.types.BMesh:
-        """Get the most updated bmesh for an object based on its state"""
-        # Detect object state
-        if obj.mode == "EDIT":
-            # Check for Geometry Nodes in Edit Mode
-            has_geometry_nodes = any(mod.type == "NODES" for mod in obj.modifiers)
-            analysis_mode = "EDIT_GEOMETRY_NODES" if has_geometry_nodes else "EDIT"
-        else:
-            analysis_mode = "OBJECT"
-        
-        # Get bmesh based on state
-        if analysis_mode in ["EDIT", "EDIT_GEOMETRY_NODES"]:
-            # Direct BMesh extraction for real-time tracking
-            bm = bmesh.from_edit_mesh(obj.data)
-            bm.edges.ensure_lookup_table()
-            bm.faces.ensure_lookup_table()
-            bm.verts.ensure_lookup_table()
-            return bm
-        else:
-            # OBJECT mode - use evaluated mesh from depsgraph
-            depsgraph = bpy.context.evaluated_depsgraph_get()
-            evaluated_obj = obj.evaluated_get(depsgraph)
-            mesh = evaluated_obj.to_mesh()
-            
-            try:
-                bm = bmesh.new()
-                bm.from_mesh(mesh)
-                bm.edges.ensure_lookup_table()
-                bm.faces.ensure_lookup_table()
-                bm.verts.ensure_lookup_table()
-                return bm
-            finally:
-                evaluated_obj.to_mesh_clear()
-
     def _get_mesh_data_from_bmesh(self, bm: bmesh.types.BMesh) -> Dict[str, np.ndarray]:
         """Extract mesh data from a bmesh"""
         v_count = len(bm.verts)
@@ -122,19 +88,33 @@ class MeshAnalysisEngine:
             "edge_v_indices": edge_v_indices.reshape((-1, 2)),
         }
 
-    def _get_mesh_for_triangulation(self, bm: bmesh.types.BMesh) -> bpy.types.Mesh:
-        """Get mesh for triangulation from the bmesh"""
-        # Create a temporary mesh from the bmesh
-        temp_mesh = bpy.data.meshes.new(name="_temp_triangulation")
-        bm.to_mesh(temp_mesh)
-        return temp_mesh
+    def _get_triangulated_face_data(self, bm: bmesh.types.BMesh, face_indices: np.ndarray) -> np.ndarray:
+        """Get triangulated vertex indices for faces directly from BMesh"""
+        triangulated_indices = []
+        
+        for face_idx in face_indices:
+            if face_idx < len(bm.faces):
+                face = bm.faces[face_idx]
+                # Triangulate the face using BMesh's built-in triangulation
+                if len(face.verts) >= 3:
+                    # Simple fan triangulation for convex faces
+                    # For more complex faces, BMesh would need proper triangulation
+                    verts = face.verts
+                    for i in range(1, len(verts) - 1):
+                        triangulated_indices.extend([
+                            verts[0].index,
+                            verts[i].index,
+                            verts[i + 1].index
+                        ])
+        
+        return np.array(triangulated_indices, dtype=np.int32)
 
     def _format_gpu_data(
         self,
         result: AnalysisResult,
         color: tuple,
         mesh_data: Dict[str, np.ndarray],
-        mesh: Optional[bpy.types.Mesh] = None
+        bm: Optional[bmesh.types.BMesh] = None
     ) -> GPUFormattedData:
         """Format analysis result into GPU-ready data using views"""
         verts = mesh_data["verts"]
@@ -157,30 +137,26 @@ class MeshAnalysisEngine:
             primitive_type = PrimitiveType.LINES
 
         elif result.feature_type == FeatureType.FACE:
-            # For faces, we need loop triangles from the provided mesh
-            # Use the mesh that was passed in by the caller
-            
-            mesh.calc_loop_triangles()
-
-            poly_indices = np.empty(len(mesh.loop_triangles), dtype=np.int32)
-            mesh.loop_triangles.foreach_get("polygon_index", poly_indices)
-            mask = np.isin(poly_indices, result.indices)
-
-            all_tri_v_indices = np.empty(len(mesh.loop_triangles) * 3, dtype=np.int32)
-            mesh.loop_triangles.foreach_get("vertices", all_tri_v_indices)
-            all_tri_v_indices = all_tri_v_indices.reshape((-1, 3))
-
-            selected_v_indices = all_tri_v_indices[mask].flatten()
-
-            if len(selected_v_indices) == 0:
+            # For faces, use direct triangulation from BMesh
+            if bm is not None:
+                # Get triangulated vertex indices directly from BMesh
+                tri_v_indices = self._get_triangulated_face_data(bm, result.indices)
+                
+                if len(tri_v_indices) == 0:
+                    vertices = np.array([], dtype=np.float32).reshape(0, 3)
+                    normals_view = np.array([], dtype=np.float32).reshape(0, 3)
+                    colors = np.array([], dtype=np.float32).reshape(0, 4)
+                    primitive_type = PrimitiveType.TRIS
+                else:
+                    vertices = verts[tri_v_indices]
+                    normals_view = normals[tri_v_indices]
+                    colors = np.full((len(tri_v_indices), 4), color, dtype=np.float32)
+                    primitive_type = PrimitiveType.TRIS
+            else:
+                # Fallback to empty data if no BMesh provided
                 vertices = np.array([], dtype=np.float32).reshape(0, 3)
                 normals_view = np.array([], dtype=np.float32).reshape(0, 3)
                 colors = np.array([], dtype=np.float32).reshape(0, 4)
-                primitive_type = PrimitiveType.TRIS
-            else:
-                vertices = verts[selected_v_indices]
-                normals_view = normals[selected_v_indices]
-                colors = np.full((len(selected_v_indices), 4), color, dtype=np.float32)
                 primitive_type = PrimitiveType.TRIS
 
         else:
@@ -199,8 +175,8 @@ class MeshAnalysisEngine:
     def analyze_mesh(
         self, obj: Object, features: Optional[List[str]] = None, bm: Optional[bmesh.types.BMesh] = None
     ) -> Dict[str, AnalysisResult]:
-        """Analyze mesh for specified features"""
-        if not obj or obj.type != "MESH":
+        """Analyze mesh for specified features - requires BMesh to be provided"""
+        if not obj or obj.type != "MESH" or bm is None:
             return {}
 
         obj_name = obj.name
@@ -228,15 +204,8 @@ class MeshAnalysisEngine:
             else:
                 uncached_features.append(feature)
 
-        # Analyze all uncached features with a single BMesh, using mode optimization
+        # Analyze all uncached features with the provided BMesh
         if uncached_features:
-            # If bmesh not provided, get the most updated one
-            if bm is None:
-                bm = self._get_updated_bmesh(obj)
-                should_free_bm = True
-            else:
-                should_free_bm = False
-                
             # Use the provided bmesh directly - no more extraction!
             analysis_results = self._analyze_features_batch(bm, uncached_features)
             
@@ -252,30 +221,20 @@ class MeshAnalysisEngine:
                     cache_key = f"{obj_name}:{feature}"
                     self.cache[cache_key] = result
 
-            # Clean up bmesh if we created it (edit mode bmesh is managed by Blender)
-            if should_free_bm and obj.mode != "EDIT":
-                bm.free()
-
         return results
 
-    def analyze_and_format_mesh(
-        self, obj: Object, features: Optional[List[str]] = None, feature_colors: Optional[Dict[str, tuple]] = None, analysis_mode: str = "OBJECT"
+    def analyze_and_format_mesh_with_bmesh(
+        self, obj: Object, features: Optional[List[str]] = None, feature_colors: Optional[Dict[str, tuple]] = None, bm: Optional[bmesh.types.BMesh] = None
     ) -> Dict[str, GPUFormattedData]:
-        """Analyze mesh and return GPU-ready formatted data"""
-        if not obj or obj.type != "MESH":
+        """Analyze mesh and return GPU-ready formatted data using provided bmesh"""
+        if not obj or obj.type != "MESH" or bm is None:
             return {}
 
-        # Get the most updated bmesh for this object
-        bm = self._get_updated_bmesh(obj)
-        
-        # Extract mesh data from the bmesh
+        # Extract mesh data from the provided bmesh
         mesh_data = self._get_mesh_data_from_bmesh(bm)
         
-        # Get analysis results using the bmesh
+        # Get analysis results using the provided bmesh
         analysis_results = self.analyze_mesh(obj, features, bm)
-        
-        # Get mesh for triangulation from the bmesh
-        mesh = self._get_mesh_for_triangulation(bm)
 
         # Convert to GPU formatted data
         gpu_results = {}
@@ -285,15 +244,8 @@ class MeshAnalysisEngine:
             else:
                 color = (1.0, 0.0, 0.0, 1.0)  # Default red
             
-            gpu_data = self._format_gpu_data(result, color, mesh_data, mesh)
+            gpu_data = self._format_gpu_data(result, color, mesh_data, bm)
             gpu_results[feature_id] = gpu_data
-            
-        # Clean up bmesh if we created it (edit mode bmesh is managed by Blender)
-        if obj.mode != "EDIT":
-            bm.free()
-        
-        # Clean up temporary mesh
-        bpy.data.meshes.remove(mesh)
             
         return gpu_results
 
