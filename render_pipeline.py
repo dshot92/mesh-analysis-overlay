@@ -91,6 +91,38 @@ class RenderPipeline:
         self.gpu_batches.clear()
         self._dirty_objects.clear()
 
+    def update_feature_colors_only(self, obj_name: str, feature_id: str, new_color: tuple):
+        """Efficient color-only update without rebuilding GPU batches"""
+        if obj_name not in self.render_data:
+            return
+        
+        obj_render_data = self.render_data[obj_name]
+        if feature_id not in obj_render_data:
+            return
+        
+        render_data = obj_render_data[feature_id]
+        
+        # Update colors in place - this is the key optimization
+        render_data.colors[:] = np.full_like(render_data.colors, new_color, dtype=np.float32)
+        
+        # Update GPU batch if it exists
+        if obj_name in self.gpu_batches and feature_id in self.gpu_batches[obj_name]:
+            # Get current offset value
+            props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+            offset_val = props.overlay_offset
+            
+            # Recreate batch with new colors (more efficient than full rebuild)
+            self._ensure_shaders()
+            offset_verts = render_data.vertices + render_data.normals * offset_val
+            
+            batch = batch_for_shader(
+                self.shaders[render_data.primitive_type],
+                render_data.primitive_type.value,
+                {"pos": offset_verts, "color": render_data.colors},
+            )
+            
+            self.gpu_batches[obj_name][feature_id] = batch
+
     def clear_object_data(self, obj_name: str):
         """Remove data for a specific object"""
         if obj_name in self.render_data:

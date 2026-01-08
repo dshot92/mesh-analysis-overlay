@@ -162,8 +162,14 @@ def update_overlay_properties(self, context):
     elif hasattr(context, 'property_name'):
         property_name = context.property_name
     
-    # Check if this is a color property change
-    is_color_property = property_name and 'color' in property_name.lower()
+    # Check if this is a color property change - more robust detection
+    is_color_property = (
+        property_name and 
+        (
+            property_name.endswith('_color') or 
+            'color' in property_name.lower()
+        )
+    )
     
     # Always invalidate non_planar_faces cache when threshold might have changed
     # This is a bit aggressive but ensures updates work
@@ -178,27 +184,8 @@ def update_overlay_properties(self, context):
         # Trigger analysis update
         overlay_controller.update_all_selected()
     elif is_color_property:
-        # For color changes, we only need to update GPU colors, not re-analyze geometry
-        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
-        
-        for obj_name in overlay_controller.displayed_objects:
-            # Get current render data for this object
-            if obj_name in overlay_controller.render_pipeline.render_data:
-                obj_render_data = overlay_controller.render_pipeline.render_data[obj_name]
-                
-                # Update colors for each feature that has render data
-                for feature_id, render_data in obj_render_data.items():
-                    # Get the new color for this feature
-                    new_color = tuple(getattr(props, f"{feature_id}_color"))
-                    
-                    # Update only the colors in the render data
-                    render_data.colors[:] = np.full_like(render_data.colors, new_color, dtype=np.float32)
-                
-                # Mark object as dirty to rebuild GPU batches with new colors
-                overlay_controller.render_pipeline._dirty_objects.add(obj_name)
-        
-        # Trigger redraw
-        tag_redraw_viewports()
+        # For color changes, use optimized real-time update without reanalysis
+        _update_colors_realtime(property_name)
     else:
         # For other visual properties (offset, sizes), we need to rebuild GPU batches
         # Mark all displayed objects as dirty to force batch rebuild
@@ -206,6 +193,39 @@ def update_overlay_properties(self, context):
             overlay_controller.render_pipeline._dirty_objects.add(obj_name)
         # Trigger redraw
         tag_redraw_viewports()
+
+
+def _update_colors_realtime(changed_property_name: str):
+    """Optimized real-time color update without triggering reanalysis"""
+    props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+    
+    # Extract feature ID from property name (e.g., "tri_faces_color" -> "tri_faces")
+    if changed_property_name.endswith('_color'):
+        feature_id = changed_property_name[:-6]  # Remove "_color" suffix
+    else:
+        # Fallback: try to find matching feature by checking all color properties
+        feature_id = None
+        for obj_name in overlay_controller.displayed_objects:
+            if obj_name in overlay_controller.render_pipeline.render_data:
+                for existing_feature_id in overlay_controller.render_pipeline.render_data[obj_name].keys():
+                    if hasattr(props, f"{existing_feature_id}_color"):
+                        feature_id = existing_feature_id
+                        break
+                if feature_id:
+                    break
+    
+    if not feature_id:
+        return
+    
+    # Get the new color for this feature
+    new_color = tuple(getattr(props, f"{feature_id}_color"))
+    
+    # Update colors for all displayed objects that have this feature using the efficient method
+    for obj_name in overlay_controller.displayed_objects:
+        overlay_controller.render_pipeline.update_feature_colors_only(obj_name, feature_id, new_color)
+    
+    # Trigger redraw to show color changes immediately
+    tag_redraw_viewports()
 
 
 def tag_redraw_viewports():
