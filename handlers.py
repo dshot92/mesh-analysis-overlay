@@ -1,4 +1,5 @@
 import bpy
+import numpy as np
 
 from bpy.app.handlers import persistent
 from .overlay_controller import overlay_controller
@@ -47,8 +48,14 @@ def update_analysis_overlay(scene, depsgraph):
                     dirty_objects.add((obj, analysis_mode))
                     break
         
-        # Always update objects with modifiers to ensure depsgraph changes are reflected
-        if obj not in dirty_objects and obj.modifiers and obj.mode != "EDIT":
+        # Only update objects with modifiers if there are actual geometry/transform changes
+        # Don't trigger analysis for property-only changes like colors
+        if (obj not in dirty_objects and 
+            obj.modifiers and 
+            obj.mode != "EDIT" and
+            any(update.is_updated_geometry or update.is_updated_transform 
+                for update in depsgraph.updates 
+                if update.id == obj or update.id == obj.data)):
             dirty_objects.add((obj, analysis_mode))
 
     # 3. Process all dirty objects - HANDLER drives the analysis flow
@@ -141,6 +148,9 @@ def update_overlay_properties(self, context):
         except:
             pass
     
+    # Check if this is a color property change
+    is_color_property = property_name and 'color' in property_name.lower()
+    
     # Always invalidate non_planar_faces cache when threshold might have changed
     # This is a bit aggressive but ensures updates work
     threshold_changed = (
@@ -153,8 +163,30 @@ def update_overlay_properties(self, context):
             overlay_controller.analysis_engine.invalidate_cache(obj_name, ['non_planar_faces'])
         # Trigger analysis update
         overlay_controller.update_all_selected()
+    elif is_color_property:
+        # For color changes, we only need to update GPU colors, not re-analyze geometry
+        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+        
+        for obj_name in overlay_controller.displayed_objects:
+            # Get current render data for this object
+            if obj_name in overlay_controller.render_pipeline.render_data:
+                obj_render_data = overlay_controller.render_pipeline.render_data[obj_name]
+                
+                # Update colors for each feature that has render data
+                for feature_id, render_data in obj_render_data.items():
+                    # Get the new color for this feature
+                    new_color = tuple(getattr(props, f"{feature_id}_color"))
+                    
+                    # Update only the colors in the render data
+                    render_data.colors[:] = np.full_like(render_data.colors, new_color, dtype=np.float32)
+                
+                # Mark object as dirty to rebuild GPU batches with new colors
+                overlay_controller.render_pipeline._dirty_objects.add(obj_name)
+        
+        # Trigger redraw
+        tag_redraw_viewports()
     else:
-        # For visual properties (colors, offset, sizes), we need to rebuild GPU batches
+        # For other visual properties (offset, sizes), we need to rebuild GPU batches
         # Mark all displayed objects as dirty to force batch rebuild
         for obj_name in overlay_controller.displayed_objects:
             overlay_controller.render_pipeline._dirty_objects.add(obj_name)
