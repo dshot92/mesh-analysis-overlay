@@ -30,32 +30,45 @@ def update_analysis_overlay(scene, depsgraph):
         if not obj:
             continue
 
+        # Determine the analysis mode
+        analysis_mode = _get_analysis_mode(obj)
+
         # In Edit Mode, the modeling buffer is live, so we treat it as potentially dirty
         # whenever Blender notifies us of a change in the viewport.
         if obj.mode == "EDIT":
-            dirty_objects.add(obj)
+            dirty_objects.add((obj, analysis_mode))
             continue
 
         # For Object Mode, check for any updates that might affect the mesh
         for update in depsgraph.updates:
             if update.id == obj or update.id == obj.data:
                 if update.is_updated_geometry or update.is_updated_transform:
-                    dirty_objects.add(obj)
+                    dirty_objects.add((obj, analysis_mode))
                     break
         
         # Always update objects with modifiers to ensure depsgraph changes are reflected
         if obj not in dirty_objects and obj.modifiers and obj.mode != "EDIT":
-            dirty_objects.add(obj)
+            dirty_objects.add((obj, analysis_mode))
 
     # 3. Process all dirty objects
     if dirty_objects:
         Mesh_Analysis_Overlay_Panel.clear_stats_cache()
-        for obj in dirty_objects:
-            overlay_controller.handle_geometry_change(obj)
+        for obj, analysis_mode in dirty_objects:
+            overlay_controller.handle_geometry_change(obj, analysis_mode)
 
     # 4. Trigger redraws
     if dirty_objects or selection_changed:
         tag_redraw_viewports()
+
+
+def _get_analysis_mode(obj):
+    """Determine the analysis mode for the object"""
+    if obj.mode == "EDIT":
+        # Check for Geometry Nodes in Edit Mode
+        has_geometry_nodes = any(mod.type == "NODES" for mod in obj.modifiers)
+        return "EDIT_GEOMETRY_NODES" if has_geometry_nodes else "EDIT"
+    else:
+        return "OBJECT"
 
 
 def update_overlay_enabled_toggles(self, context):

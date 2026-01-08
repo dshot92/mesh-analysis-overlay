@@ -52,7 +52,7 @@ class OverlayController:
         for obj in selected_meshes:
             self.update_overlay(obj)
 
-    def update_overlay(self, obj: Object):
+    def update_overlay(self, obj: Object, analysis_mode: str = "OBJECT"):
         if not self.is_running or not obj or obj.type != "MESH":
             return
 
@@ -84,8 +84,8 @@ class OverlayController:
                     PrimitiveType.POINTS,
                 )
 
-        # Analyze using the new GPU-ready interface
-        gpu_results = self.analysis_engine.analyze_mesh_for_gpu(obj, enabled_features, feature_colors)
+        # Analyze using the new GPU-ready interface with mode optimization
+        gpu_results = self.analysis_engine.analyze_mesh_for_gpu(obj, enabled_features, feature_colors, analysis_mode)
 
         for f_id in enabled_features:
             if f_id in gpu_results:
@@ -108,12 +108,12 @@ class OverlayController:
         # Trigger redraw to reflect changes (both enabled and disabled features)
         self.render_pipeline.mark_geometry_dirty()
 
-    def handle_geometry_change(self, obj: Object):
+    def handle_geometry_change(self, obj: Object, analysis_mode: str = "OBJECT"):
         """Standard entry point for geometry updates"""
         if not self.is_running:
             return
         self.analysis_engine.invalidate_cache(obj.name)
-        self.update_overlay(obj)
+        self.update_overlay(obj, analysis_mode)
 
     def handle_property_change(self ):
         if not self.is_running:
