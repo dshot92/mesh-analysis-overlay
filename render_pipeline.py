@@ -33,18 +33,14 @@ class RenderPipeline:
         """Initialize specialized shaders using official builtins"""
         if self.shaders[PrimitiveType.TRIS] is None:
             # Standard smooth color for triangles
-            self.shaders[PrimitiveType.TRIS] = gpu.shader.from_builtin("SMOOTH_COLOR")
+            self.shaders[PrimitiveType.TRIS] = gpu.shader.from_builtin("FLAT_COLOR")
 
             # Polyline shader for consistent width
-            self.shaders[PrimitiveType.LINES] = gpu.shader.from_builtin(
-                "POLYLINE_SMOOTH_COLOR"
-            )
+            self.shaders[PrimitiveType.LINES] = gpu.shader.from_builtin( "POLYLINE_FLAT_COLOR")
 
             # Native Point shader for vertices
             # In Blender 4.x/5.x, POINT_FLAT_COLOR is the correct builtin
-            self.shaders[PrimitiveType.POINTS] = gpu.shader.from_builtin(
-                "POINT_FLAT_COLOR"
-            )
+            self.shaders[PrimitiveType.POINTS] = gpu.shader.from_builtin( "POINT_FLAT_COLOR")
 
     def start(self):
         """Start the render pipeline"""
@@ -179,14 +175,11 @@ class RenderPipeline:
         if self.shaders[PrimitiveType.LINES]:
             shader = self.shaders[PrimitiveType.LINES]
             shader.bind()
-            try:
-                shader.uniform_float("viewportSize", viewport_size)
-            except:
-                pass
-            try:
-                shader.uniform_float("lineWidth", props.overlay_edge_width)
-            except:
-                pass
+            
+            # Use only working uniforms from console output
+            shader.uniform_float("viewportSize", viewport_size)
+            shader.uniform_float("lineWidth", props.overlay_edge_width)
+            
             self._draw_for_type(
                 shader, PrimitiveType.LINES, selected_objs, view_matrix, proj_matrix
             )
@@ -196,25 +189,9 @@ class RenderPipeline:
             shader = self.shaders[PrimitiveType.POINTS]
             shader.bind()
 
-            # Pass radius and viewport size
-            # Modern point shaders usually take 'radius' or 'size'
-            try:
-                shader.uniform_float("viewportSize", viewport_size)
-            except:
-                pass
-
-            # Try setting the size using all common modern uniform names
-            try:
-                shader.uniform_float("radius", v_radius)
-            except:
-                try:
-                    shader.uniform_float("pointSize", v_radius)
-                except:
-                    try:
-                        shader.uniform_float("size", v_radius)
-                    except:
-                        pass
-
+            # Use only working uniforms from console output
+            shader.uniform_float("size", v_radius)
+            
             # Fallback for state-based sizing
             gpu.state.point_size_set(v_radius)
 
@@ -235,24 +212,14 @@ class RenderPipeline:
 
             mvp = proj_matrix @ view_matrix @ obj.matrix_world
 
-            # Set MVP
-            try:
-                shader.uniform_float("u_ModelViewProjectionMatrix", mvp)
-            except:
-                try:
-                    shader.uniform_float("ModelViewProjectionMatrix", mvp)
-                except:
-                    pass
+            # Use working MVP uniform (confirmed by console output)
+            shader.uniform_float("ModelViewProjectionMatrix", mvp)
 
             for feature_id, batch in obj_batches.items():
                 data = obj_data.get(feature_id)
                 if data and data.primitive_type == prim_type:
                     batch.draw(shader)
 
-    def mark_geometry_dirty(self, feature: str = None):
-        for obj_name in self.render_data:
-            self._dirty_objects.add(obj_name)
-
-    def mark_properties_dirty(self, feature: str = None):
+    def mark_geometry_dirty(self):
         for obj_name in self.render_data:
             self._dirty_objects.add(obj_name)

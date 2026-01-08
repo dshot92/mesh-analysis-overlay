@@ -2,170 +2,13 @@
 
 import bpy
 import numpy as np
-from typing import Dict, Tuple, Optional, Set
+from typing import Dict, Set
 from bpy.types import Object
-import bmesh
 
-from .analysis_engine import MeshAnalysisEngine, FeatureType
-from .render_pipeline import RenderPipeline, PrimitiveType
+from .analysis_engine import MeshAnalysisEngine
+from .render_pipeline import RenderPipeline
+from .render_system import PrimitiveType
 from .feature_data import FEATURE_DATA
-
-
-class GeometryProcessor:
-    """Utilities for converting mesh analysis to GPU-ready arrays via NumPy"""
-
-    @staticmethod
-    def _get_mesh_data(obj: Object, use_modifiers: bool = False) -> Dict[str, np.ndarray]:
-        """Extract mesh data, optionally with modifiers applied"""
-        is_edit_mode = obj.mode == "EDIT" and obj.data.is_editmode
-
-        # In Object Mode, always use evaluated mesh from depsgraph (what you see in viewport)
-        if obj.mode != "EDIT":
-            depsgraph = bpy.context.evaluated_depsgraph_get()
-            evaluated_obj = obj.evaluated_get(depsgraph)
-            mesh = evaluated_obj.to_mesh()
-            
-            try:
-                v_count = len(mesh.vertices)
-                verts = np.empty(v_count * 3, dtype=np.float32)
-                mesh.vertices.foreach_get("co", verts)
-                normals = np.empty(v_count * 3, dtype=np.float32)
-                mesh.vertices.foreach_get("normal", normals)
-
-                edge_v_indices = np.empty(len(mesh.edges) * 2, dtype=np.int32)
-                mesh.edges.foreach_get("vertices", edge_v_indices)
-
-                return {
-                    "verts": verts.reshape((-1, 3)),
-                    "normals": normals.reshape((-1, 3)),
-                    "edge_v_indices": edge_v_indices.reshape((-1, 2)),
-                    "is_edit": False,
-                }
-            finally:
-                evaluated_obj.to_mesh_clear()
-
-        if is_edit_mode:
-            # Direct BMesh extraction is the only way to track 'G' (Grab) transforms in real-time
-            bm = bmesh.from_edit_mesh(obj.data)
-            v_count = len(bm.verts)
-
-            # Efficiently extract positions and normals from BMesh
-            # Note: We must use float32 for GPU compatibility
-            verts = np.array([v.co for v in bm.verts], dtype=np.float32)
-            normals = np.array([v.normal for v in bm.verts], dtype=np.float32)
-
-            # Extract edge indices
-            edge_v_indices = np.array(
-                [[v.index for v in e.verts] for e in bm.edges], dtype=np.int32
-            )
-
-            return {
-                "verts": verts.reshape((-1, 3)),
-                "normals": normals.reshape((-1, 3)),
-                "edge_v_indices": edge_v_indices.reshape((-1, 2)),
-                "is_edit": True,
-            }
-        else:
-            # Faster foreach_get path for Object Mode
-            mesh = obj.data
-            v_count = len(mesh.vertices)
-            verts = np.empty(v_count * 3, dtype=np.float32)
-            mesh.vertices.foreach_get("co", verts)
-            normals = np.empty(v_count * 3, dtype=np.float32)
-            mesh.vertices.foreach_get("normal", normals)
-
-            edge_v_indices = np.empty(len(mesh.edges) * 2, dtype=np.int32)
-            mesh.edges.foreach_get("vertices", edge_v_indices)
-
-            return {
-                "verts": verts.reshape((-1, 3)),
-                "normals": normals.reshape((-1, 3)),
-                "edge_v_indices": edge_v_indices.reshape((-1, 2)),
-                "is_edit": False,
-            }
-
-    @staticmethod
-    def process_vertices(
-        indices: np.ndarray,
-        color: Tuple[float, float, float, float],
-        mesh_data: Dict[str, np.ndarray],
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Process vertex indices to GPU-ready data"""
-        if len(indices) == 0:
-            return np.array([]), np.array([]), np.array([])
-
-        verts = mesh_data["verts"]
-        normals = mesh_data["normals"]
-
-        # Guard against index mismatch during rapid edits
-        safe_indices = indices[indices < len(verts)]
-
-        feature_verts = verts[safe_indices]
-        feature_normals = normals[safe_indices]
-        feature_colors = np.full((len(safe_indices), 4), color, dtype=np.float32)
-
-        return feature_verts, feature_normals, feature_colors
-
-    @staticmethod
-    def process_edges(
-        indices: np.ndarray,
-        color: Tuple[float, float, float, float],
-        mesh_data: Dict[str, np.ndarray],
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Process edge indices to GPU-ready line data"""
-        if len(indices) == 0:
-            return np.array([]), np.array([]), np.array([])
-
-        verts = mesh_data["verts"]
-        normals = mesh_data["normals"]
-        edge_v_indices = mesh_data["edge_v_indices"]
-
-        # Select indices for the requested edges
-        selected_v_indices = edge_v_indices[indices].flatten()
-
-        feature_verts = verts[selected_v_indices]
-        feature_normals = normals[selected_v_indices]
-        feature_colors = np.full((len(feature_verts), 4), color, dtype=np.float32)
-
-        return feature_verts, feature_normals, feature_colors
-
-    @staticmethod
-    def process_faces(
-        obj: Object,
-        indices: np.ndarray,
-        color: Tuple[float, float, float, float],
-        mesh_data: Dict[str, np.ndarray],
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Process face indices to GPU-ready triangle data"""
-        if len(indices) == 0:
-            return np.array([]), np.array([]), np.array([])
-
-        # For faces in Edit Mode, we fall back to Object Data for loop triangles
-        # but use the synchronized vertex positions from the live mesh data.
-        mesh = obj.data
-        verts = mesh_data["verts"]
-        normals = mesh_data["normals"]
-
-        mesh.calc_loop_triangles()
-
-        poly_indices = np.empty(len(mesh.loop_triangles), dtype=np.int32)
-        mesh.loop_triangles.foreach_get("polygon_index", poly_indices)
-        mask = np.isin(poly_indices, indices)
-
-        all_tri_v_indices = np.empty(len(mesh.loop_triangles) * 3, dtype=np.int32)
-        mesh.loop_triangles.foreach_get("vertices", all_tri_v_indices)
-        all_tri_v_indices = all_tri_v_indices.reshape((-1, 3))
-
-        selected_v_indices = all_tri_v_indices[mask].flatten()
-
-        if len(selected_v_indices) == 0:
-            return np.array([]), np.array([]), np.array([])
-
-        feature_verts = verts[selected_v_indices]
-        feature_normals = normals[selected_v_indices]
-        feature_colors = np.full((len(selected_v_indices), 4), color, dtype=np.float32)
-
-        return feature_verts, feature_normals, feature_colors
 
 
 class OverlayController:
@@ -174,7 +17,6 @@ class OverlayController:
     def __init__(self):
         self.analysis_engine = MeshAnalysisEngine()
         self.render_pipeline = RenderPipeline()
-        self.geometry_processor = GeometryProcessor()
         self.displayed_objects: Set[str] = set()
         self.is_running = False
 
@@ -209,11 +51,7 @@ class OverlayController:
         self.displayed_objects = current_names
 
         for obj in selected_meshes:
-            # Re-analysis is mandatory in Edit Mode to catch modeling buffer changes
-            if obj.mode == "EDIT":
-                self.handle_geometry_change(obj)
-            else:
-                self.update_overlay(obj)
+            self.update_overlay(obj)
 
     def update_overlay(self, obj: Object):
         if not self.is_running or not obj or obj.type != "MESH":
@@ -224,68 +62,52 @@ class OverlayController:
         props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
         enabled_features = []
         feature_colors = {}
+        all_feature_ids = []
 
+        # Get all possible feature IDs and enabled ones
         for category, features in FEATURE_DATA.items():
             for feature in features:
                 f_id = feature["id"]
+                all_feature_ids.append(f_id)
                 if getattr(props, f"{f_id}_enabled", False):
                     enabled_features.append(f_id)
                     feature_colors[f_id] = tuple(getattr(props, f"{f_id}_color"))
 
-        # Fetch evaluated mesh data (what you see in viewport)
-        mesh_data = self.geometry_processor._get_mesh_data(obj)
+        # Clear data for disabled features that might have been previously enabled
+        for f_id in all_feature_ids:
+            if f_id not in enabled_features:
+                self.render_pipeline.update_feature_data(
+                    obj.name,
+                    f_id,
+                    np.array([]),
+                    np.array([]),
+                    np.array([]),
+                    PrimitiveType.POINTS,
+                )
 
-        if mesh_data["is_edit"]:
-            # Sync needed once for loop triangles to match current modeling topology
-            obj.update_from_editmode()
+        # Analyze using the new GPU-ready interface
+        gpu_results = self.analysis_engine.analyze_mesh_for_gpu(obj, enabled_features, feature_colors)
 
-        # Analyze using evaluated mesh data
-        analysis_results = self.analysis_engine.analyze_mesh(obj, enabled_features)
+        for f_id in enabled_features:
+            if f_id in gpu_results:
+                gpu_data = gpu_results[f_id]
+                # Update render pipeline immediately
+                self.render_pipeline.update_feature_data(
+                    obj.name, f_id, gpu_data.vertices, gpu_data.normals, gpu_data.colors, gpu_data.primitive_type
+                )
+            else:
+                # Clear feature data if not found
+                self.render_pipeline.update_feature_data(
+                    obj.name,
+                    f_id,
+                    np.array([]),
+                    np.array([]),
+                    np.array([]),
+                    PrimitiveType.POINTS,
+                )
 
-        for category, features in FEATURE_DATA.items():
-            for feature in features:
-                f_id = feature["id"]
-
-                if f_id in enabled_features and f_id in analysis_results:
-                    result = analysis_results[f_id]
-                    color = feature_colors[f_id]
-                    vertices, normals, colors = [], [], []
-
-                    if result.feature_type == FeatureType.VERTEX:
-                        vertices, normals, colors = (
-                            self.geometry_processor.process_vertices(
-                                result.indices, color, mesh_data
-                            )
-                        )
-                        primitive_type = PrimitiveType.POINTS
-                    elif result.feature_type == FeatureType.EDGE:
-                        vertices, normals, colors = (
-                            self.geometry_processor.process_edges(
-                                result.indices, color, mesh_data
-                            )
-                        )
-                        primitive_type = PrimitiveType.LINES
-                    elif result.feature_type == FeatureType.FACE:
-                        vertices, normals, colors = (
-                            self.geometry_processor.process_faces(
-                                obj, result.indices, color, mesh_data
-                            )
-                        )
-                        primitive_type = PrimitiveType.TRIS
-
-                    # Update render pipeline immediately
-                    self.render_pipeline.update_feature_data(
-                        obj.name, f_id, vertices, normals, colors, primitive_type
-                    )
-                else:
-                    self.render_pipeline.update_feature_data(
-                        obj.name,
-                        f_id,
-                        np.array([]),
-                        np.array([]),
-                        np.array([]),
-                        PrimitiveType.POINTS,
-                    )
+        # Trigger redraw to reflect changes (both enabled and disabled features)
+        self.render_pipeline.mark_geometry_dirty()
 
     def handle_geometry_change(self, obj: Object):
         """Standard entry point for geometry updates"""
@@ -294,7 +116,7 @@ class OverlayController:
         self.analysis_engine.invalidate_cache(obj.name)
         self.update_overlay(obj)
 
-    def handle_property_change(self, feature: Optional[str] = None):
+    def handle_property_change(self ):
         if not self.is_running:
             return
         self.render_pipeline.mark_geometry_dirty()

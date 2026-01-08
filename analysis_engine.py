@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from .feature_data import FEATURE_DATA
+from .render_system import PrimitiveType
 
 
 class FeatureType(Enum):
@@ -25,6 +26,15 @@ class AnalysisResult:
     indices: np.ndarray
     feature_type: FeatureType
     timestamp: float
+
+
+@dataclass
+class GPUFormattedData:
+    """GPU-ready formatted data for a feature"""
+    vertices: np.ndarray
+    normals: np.ndarray
+    colors: np.ndarray
+    primitive_type: PrimitiveType
 
 
 class MeshAnalysisEngine:
@@ -45,6 +55,140 @@ class MeshAnalysisEngine:
                 elif category == "faces":
                     self.feature_types[feature["id"]] = FeatureType.FACE
 
+    def _get_mesh_data(self, obj: Object) -> Dict[str, np.ndarray]:
+        """Extract mesh data, optionally with modifiers applied"""
+        is_edit_mode = obj.mode == "EDIT" and obj.data.is_editmode
+
+        # In Object Mode, always use evaluated mesh from depsgraph (what you see in viewport)
+        if obj.mode != "EDIT":
+            depsgraph = bpy.context.evaluated_depsgraph_get()
+            evaluated_obj = obj.evaluated_get(depsgraph)
+            mesh = evaluated_obj.to_mesh()
+            
+            try:
+                v_count = len(mesh.vertices)
+                verts = np.empty(v_count * 3, dtype=np.float32)
+                mesh.vertices.foreach_get("co", verts)
+                normals = np.empty(v_count * 3, dtype=np.float32)
+                mesh.vertices.foreach_get("normal", normals)
+
+                edge_v_indices = np.empty(len(mesh.edges) * 2, dtype=np.int32)
+                mesh.edges.foreach_get("vertices", edge_v_indices)
+
+                return {
+                    "verts": verts.reshape((-1, 3)),
+                    "normals": normals.reshape((-1, 3)),
+                    "edge_v_indices": edge_v_indices.reshape((-1, 2)),
+                }
+            finally:
+                evaluated_obj.to_mesh_clear()
+
+        if is_edit_mode:
+            # Direct BMesh extraction is the only way to track 'G' (Grab) transforms in real-time
+            bm = bmesh.from_edit_mesh(obj.data)
+            v_count = len(bm.verts)
+
+            # Use BMesh iteration for vertex data extraction
+            verts = np.empty(v_count * 3, dtype=np.float32)
+            normals = np.empty(v_count * 3, dtype=np.float32)
+            
+            for i, vert in enumerate(bm.verts):
+                verts[i*3:i*3+3] = vert.co
+                normals[i*3:i*3+3] = vert.normal
+
+            edge_v_indices = np.empty(len(bm.edges) * 2, dtype=np.int32)
+            for i, edge in enumerate(bm.edges):
+                edge_v_indices[i*2:i*2+2] = edge.verts[0].index, edge.verts[1].index
+
+            return {
+                "verts": verts.reshape((-1, 3)),
+                "normals": normals.reshape((-1, 3)),
+                "edge_v_indices": edge_v_indices.reshape((-1, 2)),
+            }
+        else:
+            # Faster foreach_get path for Object Mode
+            mesh = obj.data
+            v_count = len(mesh.vertices)
+            verts = np.empty(v_count * 3, dtype=np.float32)
+            mesh.vertices.foreach_get("co", verts)
+            normals = np.empty(v_count * 3, dtype=np.float32)
+            mesh.vertices.foreach_get("normal", normals)
+
+            edge_v_indices = np.empty(len(mesh.edges) * 2, dtype=np.int32)
+            mesh.edges.foreach_get("vertices", edge_v_indices)
+
+            return {
+                "verts": verts.reshape((-1, 3)),
+                "normals": normals.reshape((-1, 3)),
+                "edge_v_indices": edge_v_indices.reshape((-1, 2)),
+            }
+
+    def _format_gpu_data(
+        self,
+        obj: Object,
+        result: AnalysisResult,
+        color: tuple,
+        mesh_data: Dict[str, np.ndarray]
+    ) -> GPUFormattedData:
+        """Format analysis result into GPU-ready data using views"""
+        verts = mesh_data["verts"]
+        normals = mesh_data["normals"]
+
+        if result.feature_type == FeatureType.VERTEX:
+            # Use views to avoid copying data
+            safe_indices = result.indices[result.indices < len(verts)]
+            vertices = verts[safe_indices]
+            normals_view = normals[safe_indices]
+            colors = np.full((len(safe_indices), 4), color, dtype=np.float32)
+            primitive_type = PrimitiveType.POINTS
+
+        elif result.feature_type == FeatureType.EDGE:
+            edge_v_indices = mesh_data["edge_v_indices"]
+            selected_v_indices = edge_v_indices[result.indices].flatten()
+            vertices = verts[selected_v_indices]
+            normals_view = normals[selected_v_indices]
+            colors = np.full((len(selected_v_indices), 4), color, dtype=np.float32)
+            primitive_type = PrimitiveType.LINES
+
+        elif result.feature_type == FeatureType.FACE:
+            # For faces, we need loop triangles
+            mesh = obj.data
+            mesh.calc_loop_triangles()
+
+            poly_indices = np.empty(len(mesh.loop_triangles), dtype=np.int32)
+            mesh.loop_triangles.foreach_get("polygon_index", poly_indices)
+            mask = np.isin(poly_indices, result.indices)
+
+            all_tri_v_indices = np.empty(len(mesh.loop_triangles) * 3, dtype=np.int32)
+            mesh.loop_triangles.foreach_get("vertices", all_tri_v_indices)
+            all_tri_v_indices = all_tri_v_indices.reshape((-1, 3))
+
+            selected_v_indices = all_tri_v_indices[mask].flatten()
+
+            if len(selected_v_indices) == 0:
+                vertices = np.array([], dtype=np.float32).reshape(0, 3)
+                normals_view = np.array([], dtype=np.float32).reshape(0, 3)
+                colors = np.array([], dtype=np.float32).reshape(0, 4)
+                primitive_type = PrimitiveType.TRIS
+            else:
+                vertices = verts[selected_v_indices]
+                normals_view = normals[selected_v_indices]
+                colors = np.full((len(selected_v_indices), 4), color, dtype=np.float32)
+                primitive_type = PrimitiveType.TRIS
+
+        else:
+            vertices = np.array([], dtype=np.float32).reshape(0, 3)
+            normals_view = np.array([], dtype=np.float32).reshape(0, 3)
+            colors = np.array([], dtype=np.float32).reshape(0, 4)
+            primitive_type = PrimitiveType.POINTS
+
+        return GPUFormattedData(
+            vertices=vertices,
+            normals=normals_view,
+            colors=colors,
+            primitive_type=primitive_type
+        )
+
     def analyze_mesh(
         self, obj: Object, features: Optional[List[str]] = None
     ) -> Dict[str, AnalysisResult]:
@@ -60,31 +204,65 @@ class MeshAnalysisEngine:
             features = list(self.feature_types.keys())
 
         results = {}
+        uncached_features = []
 
-        # Check cache first
+        # Check cache first, collect uncached features
         for feature in features:
             cache_key = f"{obj_name}:{feature}"
             if cache_key in self.cache:
                 result = self.cache[cache_key]
                 results[feature] = result
-                continue
+            else:
+                uncached_features.append(feature)
 
-            # Analyze feature
-            indices = self._analyze_feature_impl(obj, feature)
-            if indices is not None and len(indices) > 0:
-                result = AnalysisResult(
-                    feature=feature,
-                    indices=indices,
-                    feature_type=self.feature_types[feature],
-                    timestamp=current_time,
-                )
-                results[feature] = result
-                self.cache[cache_key] = result
+        # Analyze all uncached features with a single BMesh
+        if uncached_features:
+            analysis_results = self._analyze_features_batch(obj, uncached_features)
+            
+            for feature, indices in analysis_results.items():
+                if indices is not None and len(indices) > 0:
+                    result = AnalysisResult(
+                        feature=feature,
+                        indices=indices,
+                        feature_type=self.feature_types[feature],
+                        timestamp=current_time,
+                    )
+                    results[feature] = result
+                    cache_key = f"{obj_name}:{feature}"
+                    self.cache[cache_key] = result
 
         return results
 
-    def _analyze_feature_impl(self, obj: Object, feature: str) -> Optional[np.ndarray]:
-        """Implement feature analysis using evaluated mesh data"""
+    def analyze_mesh_for_gpu(
+        self, obj: Object, features: Optional[List[str]] = None, feature_colors: Optional[Dict[str, tuple]] = None
+    ) -> Dict[str, GPUFormattedData]:
+        """Analyze mesh and return GPU-ready formatted data"""
+        if not obj or obj.type != "MESH":
+            return {}
+
+        # Get mesh data
+        mesh_data = self._get_mesh_data(obj)
+        
+        # Get analysis results
+        analysis_results = self.analyze_mesh(obj, features)
+        
+        # Convert to GPU formatted data
+        gpu_results = {}
+        for feature_id, result in analysis_results.items():
+            if feature_colors and feature_id in feature_colors:
+                color = feature_colors[feature_id]
+            else:
+                color = (1.0, 0.0, 0.0, 1.0)  # Default red
+            
+            gpu_data = self._format_gpu_data(obj, result, color, mesh_data)
+            gpu_results[feature_id] = gpu_data
+            
+        return gpu_results
+
+    def _analyze_features_batch(self, obj: Object, features: List[str]) -> Dict[str, Optional[np.ndarray]]:
+        """Analyze multiple features using a single BMesh for efficiency"""
+        results = {}
+        
         try:
             # Determine if we should use the live Edit Mode buffer
             is_edit_mode = obj.mode == "EDIT" and obj.data.is_editmode
@@ -92,6 +270,17 @@ class MeshAnalysisEngine:
             if is_edit_mode:
                 # Use the fast, live pointer to the edit mesh
                 bm = bmesh.from_edit_mesh(obj.data)
+                
+                # Ensure lookup tables for Edit Mode
+                bm.edges.ensure_lookup_table()
+                bm.faces.ensure_lookup_table()
+                bm.verts.ensure_lookup_table()
+                
+                # Analyze all features on the same BMesh
+                for feature in features:
+                    indices = self._analyze_with_bmesh(bm, feature)
+                    results[feature] = np.array(indices, dtype=np.int32) if indices else None
+                    
             else:
                 # Use evaluated mesh from depsgraph (what you see in viewport)
                 depsgraph = bpy.context.evaluated_depsgraph_get()
@@ -106,33 +295,22 @@ class MeshAnalysisEngine:
                     bm.faces.ensure_lookup_table()
                     bm.verts.ensure_lookup_table()
                     
-                    indices = self._analyze_with_bmesh(bm, feature)
-                    
-                    bm.free()
-                    
-                    if indices:
-                        return np.array(indices, dtype=np.int32)
-                    return None
+                    # Analyze all features on the same BMesh
+                    for feature in features:
+                        indices = self._analyze_with_bmesh(bm, feature)
+                        results[feature] = np.array(indices, dtype=np.int32) if indices else None
+                        
                 finally:
+                    bm.free()
                     evaluated_obj.to_mesh_clear()
 
-            bm.edges.ensure_lookup_table()
-            bm.faces.ensure_lookup_table()
-            bm.verts.ensure_lookup_table()
-            
-            indices = self._analyze_with_bmesh(bm, feature)
-
-            # Only free if we created a temporary BMesh (Object Mode)
-            if not is_edit_mode:
-                bm.free()
-
-            if indices:
-                return np.array(indices, dtype=np.int32)
-            return None
-
         except Exception as e:
-            print(f"Error analyzing feature {feature}: {e}")
-            return None
+            print(f"Error analyzing features batch: {e}")
+            # Return None for all features on error
+            for feature in features:
+                results[feature] = None
+                
+        return results
 
     def _analyze_vertex_features(
         self, bm: bmesh.types.BMesh, feature: str
