@@ -240,7 +240,3 @@ class RenderPipeline:
                 data = obj_data.get(feature_id)
                 if data and data.primitive_type == prim_type:
                     batch.draw(shader)
-
-    def mark_geometry_dirty(self):
-        for obj_name in self.render_data:
-            self._dirty_objects.add(obj_name)

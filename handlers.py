@@ -3,6 +3,7 @@ import bpy
 from bpy.app.handlers import persistent
 from .overlay_controller import overlay_controller
 from .panels import Mesh_Analysis_Overlay_Panel
+from .feature_data import FEATURE_DATA
 
 
 @persistent
@@ -50,11 +51,45 @@ def update_analysis_overlay(scene, depsgraph):
         if obj not in dirty_objects and obj.modifiers and obj.mode != "EDIT":
             dirty_objects.add((obj, analysis_mode))
 
-    # 3. Process all dirty objects
+    # 3. Process all dirty objects - HANDLER drives the analysis flow
     if dirty_objects:
         Mesh_Analysis_Overlay_Panel.clear_stats_cache()
         for obj, analysis_mode in dirty_objects:
-            overlay_controller.handle_geometry_change(obj, analysis_mode)
+            # Invalidate cache and trigger analysis
+            overlay_controller.analysis_engine.invalidate_cache(obj.name)
+            
+            # Get enabled features and colors
+            props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+            enabled_features = []
+            feature_colors = {}
+            
+            for category, features in FEATURE_DATA.items():
+                for feature in features:
+                    f_id = feature["id"]
+                    if getattr(props, f"{f_id}_enabled", False):
+                        enabled_features.append(f_id)
+                        feature_colors[f_id] = tuple(getattr(props, f"{f_id}_color"))
+            
+            # Perform analysis and get GPU data
+            gpu_results = overlay_controller.analysis_engine.analyze_and_format_mesh(obj, enabled_features, feature_colors, analysis_mode)
+            
+            # Update render pipeline with results
+            for f_id in enabled_features:
+                if f_id in gpu_results:
+                    gpu_data = gpu_results[f_id]
+                    overlay_controller.render_pipeline.update_feature_data(
+                        obj.name, f_id, gpu_data.vertices, gpu_data.normals, gpu_data.colors, gpu_data.primitive_type
+                    )
+                else:
+                    # Clear feature data if not found
+                    overlay_controller.render_pipeline.update_feature_data(
+                        obj.name,
+                        f_id,
+                        np.array([]),
+                        np.array([]),
+                        np.array([]),
+                        PrimitiveType.POINTS,
+                    )
 
     # 4. Trigger redraws
     if dirty_objects or selection_changed:
@@ -85,7 +120,46 @@ def update_overlay_properties(self, context):
     """Callback for visual property updates (offset, size, etc.)"""
     if not overlay_controller.is_running:
         return
-    overlay_controller.handle_property_change()
+    
+    # Check if this is the non_planar_threshold property - it affects analysis
+    # Try multiple ways to detect the property change
+    property_name = None
+    if hasattr(context, 'property'):
+        property_name = context.property
+        # Handle tuple format: (scene, 'property_path', -1)
+        if isinstance(property_name, tuple) and len(property_name) >= 2:
+            property_name = property_name[1]
+            # Extract just the property name from the full path
+            if '.' in property_name:
+                property_name = property_name.split('.')[-1]
+    elif hasattr(context, 'property_name'):
+        property_name = context.property_name
+    elif hasattr(self, 'bl_rna') and hasattr(context, 'rna'):
+        # Try to get property from RNA
+        try:
+            property_name = context.rna.bl_rna.name
+        except:
+            pass
+    
+    # Always invalidate non_planar_faces cache when threshold might have changed
+    # This is a bit aggressive but ensures updates work
+    threshold_changed = (
+        property_name == 'non_planar_threshold'
+    )
+    
+    if threshold_changed:
+        # Invalidate cache for non_planar_faces feature since threshold changed
+        for obj_name in overlay_controller.displayed_objects:
+            overlay_controller.analysis_engine.invalidate_cache(obj_name, ['non_planar_faces'])
+        # Trigger analysis update
+        overlay_controller.update_all_selected()
+    else:
+        # For visual properties (colors, offset, sizes), we need to rebuild GPU batches
+        # Mark all displayed objects as dirty to force batch rebuild
+        for obj_name in overlay_controller.displayed_objects:
+            overlay_controller.render_pipeline._dirty_objects.add(obj_name)
+        # Trigger redraw
+        tag_redraw_viewports()
 
 
 def tag_redraw_viewports():

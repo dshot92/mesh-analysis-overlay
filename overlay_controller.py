@@ -53,6 +53,7 @@ class OverlayController:
             self.update_overlay(obj)
 
     def update_overlay(self, obj: Object, analysis_mode: str = "OBJECT"):
+        """Update overlay for a specific object - called by handlers only"""
         if not self.is_running or not obj or obj.type != "MESH":
             return
 
@@ -84,13 +85,13 @@ class OverlayController:
                     PrimitiveType.POINTS,
                 )
 
-        # Analyze using the new GPU-ready interface with mode optimization
-        gpu_results = self.analysis_engine.analyze_mesh_for_gpu(obj, enabled_features, feature_colors, analysis_mode)
+        # Get GPU-ready data from analysis engine (handles everything)
+        gpu_results = self.analysis_engine.analyze_and_format_mesh(obj, enabled_features, feature_colors, analysis_mode)
 
+        # Update render pipeline with formatted data
         for f_id in enabled_features:
             if f_id in gpu_results:
                 gpu_data = gpu_results[f_id]
-                # Update render pipeline immediately
                 self.render_pipeline.update_feature_data(
                     obj.name, f_id, gpu_data.vertices, gpu_data.normals, gpu_data.colors, gpu_data.primitive_type
                 )
@@ -104,22 +105,7 @@ class OverlayController:
                     np.array([]),
                     PrimitiveType.POINTS,
                 )
-
-        # Trigger redraw to reflect changes (both enabled and disabled features)
-        self.render_pipeline.mark_geometry_dirty()
-
-    def handle_geometry_change(self, obj: Object, analysis_mode: str = "OBJECT"):
-        """Standard entry point for geometry updates"""
-        if not self.is_running:
-            return
-        self.analysis_engine.invalidate_cache(obj.name)
-        self.update_overlay(obj, analysis_mode)
-
-    def handle_property_change(self ):
-        if not self.is_running:
-            return
-        self.render_pipeline.mark_geometry_dirty()
-        self.update_all_selected()
+                
 
     def get_mesh_stats(self, obj: Object) -> Dict[str, int]:
         return self.analysis_engine.get_mesh_stats(obj)
