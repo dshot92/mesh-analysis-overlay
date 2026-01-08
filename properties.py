@@ -27,7 +27,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         size=4,
         min=0.0,
         max=1.0,
-        update=handlers.update_overlay_offset,
+        update=handlers.update_overlay_properties,
     )
     
     quad_faces_enabled: BoolProperty(
@@ -43,7 +43,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         size=4,
         min=0.0,
         max=1.0,
-        update=handlers.update_overlay_offset,
+        update=handlers.update_overlay_properties,
     )
     
     ngon_faces_enabled: BoolProperty(
@@ -59,7 +59,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         size=4,
         min=0.0,
         max=1.0,
-        update=handlers.update_overlay_offset,
+        update=handlers.update_overlay_properties,
     )
     
     non_planar_faces_enabled: BoolProperty(
@@ -75,7 +75,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         size=4,
         min=0.0,
         max=1.0,
-        update=handlers.update_overlay_offset,
+        update=handlers.update_overlay_properties,
     )
     
     degenerate_faces_enabled: BoolProperty(
@@ -91,7 +91,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         size=4,
         min=0.0,
         max=1.0,
-        update=handlers.update_overlay_offset,
+        update=handlers.update_overlay_properties,
     )
     
     # EDGE PROPERTIES
@@ -108,7 +108,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         size=4,
         min=0.0,
         max=1.0,
-        update=handlers.update_overlay_offset,
+        update=handlers.update_overlay_properties,
     )
     
     sharp_edges_enabled: BoolProperty(
@@ -124,7 +124,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         size=4,
         min=0.0,
         max=1.0,
-        update=handlers.update_overlay_offset,
+        update=handlers.update_overlay_properties,
     )
     
     seam_edges_enabled: BoolProperty(
@@ -140,7 +140,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         size=4,
         min=0.0,
         max=1.0,
-        update=handlers.update_overlay_offset,
+        update=handlers.update_overlay_properties,
     )
     
     boundary_edges_enabled: BoolProperty(
@@ -156,7 +156,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         size=4,
         min=0.0,
         max=1.0,
-        update=handlers.update_overlay_offset,
+        update=handlers.update_overlay_properties,
     )
     
     # VERTEX PROPERTIES
@@ -173,7 +173,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         size=4,
         min=0.0,
         max=1.0,
-        update=handlers.update_overlay_offset,
+        update=handlers.update_overlay_properties,
     )
     
     non_manifold_v_vertices_enabled: BoolProperty(
@@ -189,7 +189,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         size=4,
         min=0.0,
         max=1.0,
-        update=handlers.update_overlay_offset,
+        update=handlers.update_overlay_properties,
     )
     
     n_pole_vertices_enabled: BoolProperty(
@@ -205,7 +205,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         size=4,
         min=0.0,
         max=1.0,
-        update=handlers.update_overlay_offset,
+        update=handlers.update_overlay_properties,
     )
     
     e_pole_vertices_enabled: BoolProperty(
@@ -221,7 +221,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         size=4,
         min=0.0,
         max=1.0,
-        update=handlers.update_overlay_offset,
+        update=handlers.update_overlay_properties,
     )
     
     high_pole_vertices_enabled: BoolProperty(
@@ -237,7 +237,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         size=4,
         min=0.0,
         max=1.0,
-        update=handlers.update_overlay_offset,
+        update=handlers.update_overlay_properties,
     )
 
     # SETTINGS VALUES
@@ -246,7 +246,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         description="Distance to offset the overlay faces",
         default=0.01,
         precision=4,
-        update=handlers.update_overlay_offset,
+        update=handlers.update_overlay_properties,
     )
     overlay_vertex_radius: FloatProperty(
         name="Overlay Vertex Radius",
@@ -254,7 +254,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         default=5.0,
         min=1.0,
         max=50.0,
-        update=handlers.update_overlay_offset,
+        update=handlers.update_overlay_properties,
     )
     overlay_edge_width: FloatProperty(
         name="Overlay Edge Width",
@@ -262,7 +262,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         default=5.0,
         min=1.0,
         max=10.0,
-        update=handlers.update_overlay_offset,
+        update=handlers.update_overlay_properties,
     )
 
     non_planar_threshold: FloatProperty(
@@ -272,7 +272,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         min=0.0001,
         max=90.0,
         precision=4,
-        update=handlers.update_non_planar_threshold,
+        update=handlers.update_overlay_properties,
     )
 
 

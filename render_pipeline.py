@@ -7,7 +7,28 @@ from typing import Dict, Set
 from gpu_extras.batch import batch_for_shader
 from bpy.types import Object
 
-from .render_system import PrimitiveType, RenderData
+from dataclasses import dataclass
+from enum import Enum
+
+
+class PrimitiveType(Enum):
+    POINTS = "POINTS"
+    LINES = "LINES"
+    TRIS = "TRIS"
+
+
+@dataclass
+class RenderData:
+    """GPU-ready render data for a feature"""
+
+    vertices: np.ndarray
+    normals: np.ndarray
+    colors: np.ndarray
+    primitive_type: PrimitiveType
+    count: int = 0
+
+    def __post_init__(self):
+        self.count = len(self.vertices)
 
 
 class RenderPipeline:

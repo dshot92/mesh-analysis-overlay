@@ -62,31 +62,17 @@ def update_overlay_enabled_toggles(self, context):
     """Callback for feature property toggles."""
     if not overlay_controller.is_running:
         return
-    Mesh_Analysis_Overlay_Panel.clear_stats_cache()
+    # Just refresh selection/visibility - engine handles caching
     overlay_controller.update_all_selected()
     if context and hasattr(context, "area") and context.area:
         context.area.tag_redraw()
 
 
-def update_overlay_offset(self, context):
+def update_overlay_properties(self, context):
     """Callback for visual property updates (offset, size, etc.)"""
     if not overlay_controller.is_running:
         return
     overlay_controller.handle_property_change()
-    tag_redraw_viewports()
-
-
-def update_non_planar_threshold(self, context):
-    """Special handler for threshold changes requiring partial re-analysis"""
-    if not overlay_controller.is_running:
-        return
-
-    Mesh_Analysis_Overlay_Panel.clear_stats_cache()
-    for name in list(overlay_controller.displayed_objects):
-        overlay_controller.analysis_engine.invalidate_cache(name, ["non_planar_faces"])
-
-    overlay_controller.update_all_selected()
-    tag_redraw_viewports()
 
 
 def tag_redraw_viewports():

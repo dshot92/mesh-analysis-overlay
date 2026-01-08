@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from .feature_data import FEATURE_DATA
-from .render_system import PrimitiveType
+from .render_pipeline import PrimitiveType
 
 
 class FeatureType(Enum):
@@ -25,7 +25,7 @@ class AnalysisResult:
     feature: str
     indices: np.ndarray
     feature_type: FeatureType
-    timestamp: float
+    parameters: Dict  # Store parameters used for generation
 
 
 @dataclass
@@ -54,6 +54,17 @@ class MeshAnalysisEngine:
                     self.feature_types[feature["id"]] = FeatureType.EDGE
                 elif category == "faces":
                     self.feature_types[feature["id"]] = FeatureType.FACE
+
+    def _get_feature_parameters(self, feature: str) -> Dict:
+        """Get current parameters that affect this feature's analysis"""
+        params = {}
+        
+        # Only non-planar faces currently have a configurable parameter
+        if feature == "non_planar_faces":
+            props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+            params["threshold"] = props.non_planar_threshold
+            
+        return params
 
     def _get_mesh_data(self, obj: Object) -> Dict[str, np.ndarray]:
         """Extract mesh data, optionally with modifiers applied"""
@@ -152,6 +163,11 @@ class MeshAnalysisEngine:
 
         elif result.feature_type == FeatureType.FACE:
             # For faces, we need loop triangles
+            # CRITICAL: In Edit Mode, the Mesh data (loop triangles) is stale unless updated.
+            # We must sync it to match the live BMesh topology.
+            if obj.mode == "EDIT":
+                obj.update_from_editmode()
+                
             mesh = obj.data
             mesh.calc_loop_triangles()
 
@@ -197,7 +213,7 @@ class MeshAnalysisEngine:
             return {}
 
         obj_name = obj.name
-        current_time = bpy.context.scene.frame_current_final
+        # current_time removed - we use event-based invalidation
 
         # Determine which features to analyze
         if features is None:
@@ -206,12 +222,18 @@ class MeshAnalysisEngine:
         results = {}
         uncached_features = []
 
-        # Check cache first, collect uncached features
+        # Check cache first with PARAMETER validation
         for feature in features:
             cache_key = f"{obj_name}:{feature}"
-            if cache_key in self.cache:
-                result = self.cache[cache_key]
-                results[feature] = result
+            
+            # Get current parameters for this feature
+            current_params = self._get_feature_parameters(feature)
+            
+            cached_result = self.cache.get(cache_key)
+            
+            # Valid if exists AND parameters match
+            if cached_result and cached_result.parameters == current_params:
+                results[feature] = cached_result
             else:
                 uncached_features.append(feature)
 
@@ -225,7 +247,7 @@ class MeshAnalysisEngine:
                         feature=feature,
                         indices=indices,
                         feature_type=self.feature_types[feature],
-                        timestamp=current_time,
+                        parameters=self._get_feature_parameters(feature),
                     )
                     results[feature] = result
                     cache_key = f"{obj_name}:{feature}"
@@ -258,6 +280,7 @@ class MeshAnalysisEngine:
             gpu_results[feature_id] = gpu_data
             
         return gpu_results
+
 
     def _analyze_features_batch(self, obj: Object, features: List[str]) -> Dict[str, Optional[np.ndarray]]:
         """Analyze multiple features using a single BMesh for efficiency"""

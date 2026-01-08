@@ -6,8 +6,7 @@ from typing import Dict, Set
 from bpy.types import Object
 
 from .analysis_engine import MeshAnalysisEngine
-from .render_pipeline import RenderPipeline
-from .render_system import PrimitiveType
+from .render_pipeline import RenderPipeline, PrimitiveType
 from .feature_data import FEATURE_DATA
 
 
