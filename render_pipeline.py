@@ -213,8 +213,27 @@ class RenderPipeline:
         viewport_size = gpu.state.viewport_get()[2:]
 
         gpu.state.blend_set("ALPHA")
-        gpu.state.depth_test_set("LESS_EQUAL")
-        gpu.state.face_culling_set("BACK")
+        
+        # Check if X-ray mode is enabled and disable depth testing accordingly
+        xray_enabled = False
+        
+        # Properly check X-ray state by looking through 3D viewport spaces
+        for area in bpy.context.screen.areas:
+            if area.type == 'VIEW_3D':
+                for space in area.spaces:
+                    if space.type == 'VIEW_3D':
+                        if hasattr(space.shading, 'show_xray') and space.shading.show_xray:
+                            xray_enabled = True
+                            break
+                if xray_enabled:
+                    break
+        
+        if xray_enabled:
+            gpu.state.depth_test_set("NONE")
+            gpu.state.face_culling_set("NONE")  # Disable face culling to see back faces
+        else:
+            gpu.state.depth_test_set("LESS_EQUAL")
+            gpu.state.face_culling_set("BACK")  # Enable back face culling by default
 
         # 1. DRAW TRIS (Faces)
         if self.shaders[PrimitiveType.TRIS]:
