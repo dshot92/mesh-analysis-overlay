@@ -10,6 +10,40 @@ from bpy.props import (
 from bpy.types import PropertyGroup
 
 from . import handlers
+from .config_manager import config_manager
+from .preferences import get_addon_name
+
+def get_default_color(feature_name):
+    """Get default color from preferences or config"""
+    try:
+        # Try to get from addon preferences first
+        addon_name = get_addon_name()
+        prefs = bpy.context.preferences.addons[addon_name].preferences
+        color_attr = f"{feature_name}_color"
+        if hasattr(prefs, color_attr):
+            return getattr(prefs, color_attr)
+    except:
+        pass
+    
+    # Fallback to config file
+    config = config_manager.load_config(use_preferences=True)
+    return tuple(config.get("colors", {}).get(feature_name, [1.0, 0.0, 0.0, 0.5]))
+
+def get_default_overlay_setting(setting_name):
+    """Get default overlay setting from preferences or config"""
+    try:
+        # Try to get from addon preferences first
+        addon_name = get_addon_name()
+        prefs = bpy.context.preferences.addons[addon_name].preferences
+        pref_attr = f"default_{setting_name}"
+        if hasattr(prefs, pref_attr):
+            return getattr(prefs, pref_attr)
+    except:
+        pass
+    
+    # Fallback to config file
+    config = config_manager.load_config(use_preferences=True)
+    return config.get("overlay_settings", {}).get(setting_name, 0.01)
 
 
 class Mesh_Analysis_Overlay_Props(PropertyGroup):
@@ -281,8 +315,62 @@ def register():
     bpy.types.Scene.Mesh_Analysis_Overlay_Properties = PointerProperty(
         type=Mesh_Analysis_Overlay_Props
     )
+    
+    # Initialize properties with defaults for new blend files
+    def load_handler(dummy):
+        context = bpy.context
+        if hasattr(context.scene, 'Mesh_Analysis_Overlay_Properties'):
+            props = context.scene.Mesh_Analysis_Overlay_Properties
+            # Only set defaults if properties are at their initial values
+            # This prevents overwriting user changes when loading existing files
+            if props.tri_faces_color == (1.0, 0.0, 0.0, 0.5):  # Check if at default
+                apply_preference_defaults(context)
+    
+    def apply_preference_defaults(context):
+        props = context.scene.Mesh_Analysis_Overlay_Properties
+        try:
+            addon_name = get_addon_name()
+            prefs = context.preferences.addons[addon_name].preferences
+            
+            # Apply color defaults
+            color_mappings = [
+                (props.tri_faces_color, prefs.tri_faces_color),
+                (props.quad_faces_color, prefs.quad_faces_color),
+                (props.ngon_faces_color, prefs.ngon_faces_color),
+                (props.non_planar_faces_color, prefs.non_planar_faces_color),
+                (props.degenerate_faces_color, prefs.degenerate_faces_color),
+                (props.non_manifold_e_edges_color, prefs.non_manifold_edges_color),
+                (props.sharp_edges_color, prefs.sharp_edges_color),
+                (props.seam_edges_color, prefs.seam_edges_color),
+                (props.boundary_edges_color, prefs.boundary_edges_color),
+                (props.single_vertices_color, prefs.single_vertices_color),
+                (props.non_manifold_v_vertices_color, prefs.non_manifold_vertices_color),
+                (props.n_pole_vertices_color, prefs.n_pole_vertices_color),
+                (props.e_pole_vertices_color, prefs.e_pole_vertices_color),
+                (props.high_pole_vertices_color, prefs.high_pole_vertices_color)
+            ]
+            
+            for prop_array, pref_color in color_mappings:
+                for i in range(4):
+                    prop_array[i] = pref_color[i]
+            
+            # Apply overlay setting defaults
+            props.overlay_offset = prefs.default_overlay_offset
+            props.overlay_vertex_radius = prefs.default_overlay_vertex_radius
+            props.overlay_edge_width = prefs.default_overlay_edge_width
+            props.non_planar_threshold = prefs.default_non_planar_threshold
+            
+        except:
+            # Fallback to config file if preferences not available
+            pass
+    
+    bpy.app.handlers.load_post.append(load_handler)
 
 
 def unregister():
+    # Remove load handler
+    if hasattr(bpy.app, 'handlers') and hasattr(bpy.app.handlers, 'load_post'):
+        bpy.app.handlers.load_post.clear()
+    
     del bpy.types.Scene.Mesh_Analysis_Overlay_Properties
     bpy.utils.unregister_class(Mesh_Analysis_Overlay_Props)

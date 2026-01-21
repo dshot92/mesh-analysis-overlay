@@ -4,7 +4,7 @@ import numpy as np
 from bpy.app.handlers import persistent
 from .overlay_controller import overlay_controller
 from .panels import Mesh_Analysis_Overlay_Panel
-from .feature_data import FEATURE_DATA
+from .config_manager import config_manager
 from .render_pipeline import PrimitiveType
 from .utils import get_updated_bmesh_from_depsgraph
 
@@ -68,7 +68,8 @@ def update_analysis_overlay(scene, depsgraph):
             enabled_features = []
             feature_colors = {}
             
-            for category, features in FEATURE_DATA.items():
+            metadata = config_manager.get_metadata()
+            for category, features in metadata.items():
                 for feature in features:
                     f_id = feature["id"]
                     if getattr(props, f"{f_id}_enabled", False):

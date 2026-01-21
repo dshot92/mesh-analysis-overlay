@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-from . import operators, panels, properties, handlers
+from . import operators, panels, properties, handlers, preferences
 from .overlay_controller import overlay_controller
 
-modules = [properties, operators, panels, handlers]
+modules = [properties, operators, panels, handlers, preferences]
 
 
 def register():
-    hot_reload()
+    # hot_reload()  # Temporarily disabled for debugging
     for module in modules:
         if hasattr(module, "register"):
             module.register()

@@ -8,7 +8,7 @@ from bpy.types import Object
 from dataclasses import dataclass
 from enum import Enum
 
-from .feature_data import FEATURE_DATA
+from .config_manager import config_manager
 from .render_pipeline import PrimitiveType
 
 
@@ -45,8 +45,9 @@ class MeshAnalysisEngine:
         self.mesh_stats: Dict[str, Dict] = {}
         self.feature_types: Dict[str, FeatureType] = {}
 
-        # Build feature type mapping
-        for category, features in FEATURE_DATA.items():
+        # Build feature type mapping from config manager metadata
+        metadata = config_manager.get_metadata()
+        for category, features in metadata.items():
             for feature in features:
                 if category == "vertices":
                     self.feature_types[feature["id"]] = FeatureType.VERTEX

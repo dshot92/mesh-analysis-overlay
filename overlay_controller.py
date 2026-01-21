@@ -8,7 +8,7 @@ from bpy.types import Object
 
 from .analysis_engine import MeshAnalysisEngine
 from .render_pipeline import RenderPipeline, PrimitiveType
-from .feature_data import FEATURE_DATA
+from .config_manager import config_manager
 from .utils import get_updated_bmesh_from_depsgraph
 
 
@@ -67,7 +67,8 @@ class OverlayController:
         all_feature_ids = []
 
         # Get all possible feature IDs and enabled ones
-        for category, features in FEATURE_DATA.items():
+        metadata = config_manager.get_metadata()
+        for category, features in metadata.items():
             for feature in features:
                 f_id = feature["id"]
                 all_feature_ids.append(f_id)

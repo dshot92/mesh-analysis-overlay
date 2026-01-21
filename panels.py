@@ -5,7 +5,7 @@ import bmesh
 from typing import Dict
 
 from .overlay_controller import overlay_controller
-from .feature_data import FEATURE_DATA
+from .config_manager import config_manager
 from .utils import get_updated_bmesh_from_depsgraph
 
 
@@ -38,7 +38,8 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         )
 
         # Draw feature panels
-        for category, features in FEATURE_DATA.items():
+        metadata = config_manager.get_metadata()
+        for category, features in metadata.items():
             header, panel = layout.panel(f"{category}_panel", default_closed=False)
             header.label(text=category.title())
             if panel:
@@ -70,6 +71,10 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             panel.prop(props, "overlay_edge_width", text="Overlay Edge Width")
             panel.prop(props, "overlay_vertex_radius", text="Overlay Vertex Radius")
             panel.prop(props, "non_planar_threshold", text="Non-Planar Threshold")
+            
+            # Reset to preferences (CONFIG_PREFERENCE.json)
+            row = panel.row()
+            row.operator("mesh_analysis.restore_preferences", text="Restore Preferences", icon="LOOP_BACK")
 
     def draw_statistics(self, context, panel):
         """Draw statistics for all selected mesh objects"""
@@ -92,7 +97,8 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             if obj.name not in self._stats_cache:
                 stats = {"features": {}}
 
-                for category, features in FEATURE_DATA.items():
+                metadata = config_manager.get_metadata()
+                for category, features in metadata.items():
                     active_features = [
                         feature["id"]
                         for feature in features
