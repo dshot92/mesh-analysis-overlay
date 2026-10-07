@@ -2,10 +2,21 @@
 
 import bpy
 import bmesh
+import numpy as np
+from typing import Dict, List, Tuple
+
+# Features whose classification depends on vertex positions (not just topology).
+# All other features depend only on counts / connectivity / flags.
+GEOM_FEATURES = frozenset({"non_planar_faces", "degenerate_faces"})
 
 
 def get_updated_bmesh_from_depsgraph(obj: bpy.types.Object, depsgraph: bpy.types.Depsgraph) -> bmesh.types.BMesh:
-    """Get the most updated mesh from depsgraph"""
+    """Get the most updated mesh from depsgraph.
+
+    Lifetime contract (must be honoured by callers):
+    - EDIT mode without modifiers: returns Blender-owned edit bmesh, do NOT free.
+    - EDIT mode with modifiers / OBJECT mode: returns owned copy, caller must free.
+    """
     if obj.mode == "EDIT":
         # Check for Geometry Nodes in Edit Mode
         has_modifiers = len(obj.modifiers) > 0
@@ -15,45 +26,180 @@ def get_updated_bmesh_from_depsgraph(obj: bpy.types.Object, depsgraph: bpy.types
             try:
                 # Get the live edit mesh first
                 edit_bm = bmesh.from_edit_mesh(obj.data)
+                edit_bm.verts.ensure_lookup_table()
                 edit_bm.edges.ensure_lookup_table()
                 edit_bm.faces.ensure_lookup_table()
-                edit_bm.verts.ensure_lookup_table()
-                
+
                 # Create a copy to work with
                 bm = bmesh.new()
                 bm.from_mesh(edit_bm)
-                
-                # Apply modifiers to the copy for real-time effect
-                # Note: This is a simplified approach - for full modifier support,
-                # we'd need to manually apply each modifier to the bmesh
-                # For now, return the edit mesh which captures real-time changes
-                
+
                 return bm
-            except:
+            except Exception:
                 # If anything fails, fall back to edit mesh
                 bm = bmesh.from_edit_mesh(obj.data)
+                bm.verts.ensure_lookup_table()
                 bm.edges.ensure_lookup_table()
                 bm.faces.ensure_lookup_table()
-                bm.verts.ensure_lookup_table()
                 return bm
         else:
             # Direct BMesh extraction for real-time tracking
             bm = bmesh.from_edit_mesh(obj.data)
+            bm.verts.ensure_lookup_table()
             bm.edges.ensure_lookup_table()
             bm.faces.ensure_lookup_table()
-            bm.verts.ensure_lookup_table()
             return bm
     else:
         # OBJECT mode - use evaluated mesh from depsgraph
         evaluated_obj = obj.evaluated_get(depsgraph)
         mesh = evaluated_obj.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
-        
+
         try:
             bm = bmesh.new()
             bm.from_mesh(mesh)
+            bm.verts.ensure_lookup_table()
             bm.edges.ensure_lookup_table()
             bm.faces.ensure_lookup_table()
-            bm.verts.ensure_lookup_table()
             return bm
         finally:
             evaluated_obj.to_mesh_clear()
+
+
+def free_bmesh_if_owned(obj: bpy.types.Object, bm) -> None:
+    """Free a bmesh obtained from get_updated_bmesh_from_depsgraph if owned."""
+    if bm is None:
+        return
+    try:
+        if obj.mode == "EDIT" and len(obj.modifiers) == 0:
+            # Blender-owned edit bmesh, do not free.
+            return
+        bm.free()
+    except Exception:
+        pass
+
+
+def get_bmesh_counts(bm) -> Tuple[int, int, int]:
+    """O(1) topology signature. Never reads vertex positions."""
+    try:
+        return (len(bm.verts), len(bm.edges), len(bm.faces))
+    except Exception:
+        return (0, 0, 0)
+
+
+def compute_bmesh_pos_hash(bm) -> int:
+    """Cheap position hash to detect vertex moves without topology change.
+
+    Uses numpy reductions (sum / sumsq / min / max) over a foreach_get buffer
+    when available. Falls back to sampled Python iteration.
+    Collisions are theoretically possible but practically negligible for
+    single-stroke edits; topology changes are caught separately by counts.
+    """
+    try:
+        n = len(bm.verts)
+    except Exception:
+        return 0
+    if n == 0:
+        return 0
+    try:
+        foreach_get = getattr(bm.verts, "foreach_get", None)
+        if foreach_get is not None:
+            arr = np.empty(n * 3, dtype=np.float32)
+            foreach_get("co", arr)
+            # Use float64 accumulation to avoid overflow / precision drift.
+            s1 = float(np.sum(arr, dtype=np.float64))
+            # arr * arr creates one temp; acceptable vs full reclassify cost.
+            s2 = float(np.sum(arr * arr, dtype=np.float64))
+            mn = float(np.min(arr))
+            mx = float(np.max(arr))
+            # Quantize to 1e-4 to ignore float noise, keep drag detection.
+            return hash((n, round(s1, 4), round(s2, 3), round(mn, 5), round(mx, 5)))
+    except Exception:
+        pass
+    # Fallback: sampled Python read (slower, but only on old API).
+    try:
+        stride = max(1, n // 4096)
+        s1 = 0.0
+        s2 = 0.0
+        mn = float("inf")
+        mx = float("-inf")
+        for i in range(0, n, stride):
+            co = bm.verts[i].co
+            for c in (co.x, co.y, co.z):
+                s1 += c
+                s2 += c * c
+                if c < mn:
+                    mn = c
+                if c > mx:
+                    mx = c
+        return hash((n, stride, round(s1, 4), round(s2, 3)))
+    except Exception:
+        return hash((n,))
+
+
+def extract_vert_arrays(bm) -> Tuple[np.ndarray, np.ndarray]:
+    """Extract (verts, normals) as (N,3) float32 using foreach_get when possible."""
+    n = len(bm.verts)
+    if n == 0:
+        empty = np.zeros((0, 3), dtype=np.float32)
+        return empty, empty.copy()
+    try:
+        if hasattr(bm.verts, "foreach_get"):
+            flat_co = np.empty(n * 3, dtype=np.float32)
+            flat_no = np.empty(n * 3, dtype=np.float32)
+            bm.verts.foreach_get("co", flat_co)
+            try:
+                bm.verts.foreach_get("normal", flat_no)
+            except Exception:
+                # Default up-vector when normals unavailable.
+                flat_no.fill(0.0)
+                flat_no[2::3] = 1.0
+            return flat_co.reshape((-1, 3)), flat_no.reshape((-1, 3))
+    except Exception:
+        pass
+    # Fallback Python loop (compat only).
+    verts = np.empty((n, 3), dtype=np.float32)
+    normals = np.empty((n, 3), dtype=np.float32)
+    for i, v in enumerate(bm.verts):
+        verts[i, 0], verts[i, 1], verts[i, 2] = v.co.x, v.co.y, v.co.z
+        normals[i, 0], normals[i, 1], normals[i, 2] = v.normal.x, v.normal.y, v.normal.z
+    return verts, normals
+
+
+def extract_edge_vert_indices(bm) -> np.ndarray:
+    """Extract (M,2) int32 edge -> vert indices using foreach_get when possible."""
+    m = len(bm.edges)
+    if m == 0:
+        return np.zeros((0, 2), dtype=np.int32)
+    try:
+        if hasattr(bm.edges, "foreach_get"):
+            flat = np.empty(m * 2, dtype=np.int32)
+            bm.edges.foreach_get("vertices", flat)
+            return flat.reshape((-1, 2))
+    except Exception:
+        pass
+    arr = np.empty((m, 2), dtype=np.int32)
+    for i, e in enumerate(bm.edges):
+        arr[i, 0] = e.verts[0].index
+        arr[i, 1] = e.verts[1].index
+    return arr
+
+
+def collect_enabled_features(props, metadata) -> Tuple[List[str], Dict[str, tuple], List[str]]:
+    """Single place building (enabled_features, feature_colors, all_ids).
+
+    Deduplicates logic previously copied in overlay_controller / handlers / panels.
+    """
+    enabled: List[str] = []
+    colors: Dict[str, tuple] = {}
+    all_ids: List[str] = []
+    for _category, features in metadata.items():
+        for feature in features:
+            f_id = feature["id"]
+            all_ids.append(f_id)
+            try:
+                if getattr(props, f"{f_id}_enabled", False):
+                    enabled.append(f_id)
+                    colors[f_id] = tuple(getattr(props, f"{f_id}_color"))
+            except Exception:
+                continue
+    return enabled, colors, all_ids

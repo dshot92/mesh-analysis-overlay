@@ -6,132 +6,212 @@ from .overlay_controller import overlay_controller
 from .panels import Mesh_Analysis_Overlay_Panel
 from .config_manager import config_manager
 from .render_pipeline import PrimitiveType
-from .utils import get_updated_bmesh_from_depsgraph
+from .utils import (
+    get_updated_bmesh_from_depsgraph,
+    free_bmesh_if_owned,
+    collect_enabled_features,
+)
+
+# Kept for unregister cleanup / external compat; freshness is now driven by
+# engine versioning + explicit edit-mode forcing (see below).
+_last_topo: dict = {}
+_last_pos_hash: dict = {}
+_last_enabled_key: dict = {}
+_last_threshold: dict = {}
+_last_time: dict = {}
+
+
+def _arrays_equal(a, b) -> bool:
+    try:
+        if a is b:
+            return True
+        if getattr(a, "shape", None) != getattr(b, "shape", None):
+            return False
+        if getattr(a, "size", 0) == 0:
+            return True
+        return bool(np.array_equal(a, b))
+    except Exception:
+        return False
+
+
+def _push_gpu_results(obj, enabled_features, gpu_results) -> bool:
+    """Push analysis results, skipping identical content.
+
+    Returns True when the pipeline was modified (needs redraw).
+    """
+    rp = overlay_controller.render_pipeline
+    try:
+        present = rp.render_data.get(obj.name, {}) or {}
+    except Exception:
+        present = {}
+    initial = dict(present)
+    changed = False
+    for f_id in enabled_features:
+        if f_id in gpu_results:
+            gpu_data = gpu_results[f_id]
+            try:
+                is_empty = len(gpu_data.vertices) == 0
+            except Exception:
+                is_empty = True
+            if is_empty:
+                if f_id in initial:
+                    rp.update_feature_data(
+                        obj.name, f_id,
+                        np.zeros((0,), dtype=np.float32),
+                        np.zeros((0,), dtype=np.float32),
+                        np.zeros((0,), dtype=np.float32),
+                        PrimitiveType.POINTS,
+                    )
+                    changed = True
+                continue
+            old = initial.get(f_id)
+            if old is not None:
+                try:
+                    if (
+                        _arrays_equal(old.vertices, gpu_data.vertices)
+                        and _arrays_equal(old.normals, gpu_data.normals)
+                        and _arrays_equal(old.colors, gpu_data.colors)
+                        and old.primitive_type == gpu_data.primitive_type
+                    ):
+                        continue
+                except Exception:
+                    pass
+            rp.update_feature_data(
+                obj.name, f_id, gpu_data.vertices, gpu_data.normals, gpu_data.colors, gpu_data.primitive_type
+            )
+            changed = True
+        else:
+            if f_id in initial:
+                rp.update_feature_data(
+                    obj.name,
+                    f_id,
+                    np.zeros((0,), dtype=np.float32),
+                    np.zeros((0,), dtype=np.float32),
+                    np.zeros((0,), dtype=np.float32),
+                    PrimitiveType.POINTS,
+                )
+                changed = True
+    return changed
 
 
 @persistent
 def update_analysis_overlay(scene, depsgraph):
-    """Primary depsgraph callback. Optimized for real-time Edit Mode tracking."""
+    """Depsgraph callback.
+
+    - EDIT mode: always re-analyze displayed objects (realtime guarantee,
+      including undo/selection ticks). Forces classification via explicit
+      invalidation; identical pipeline content still skips GPU rebuilds.
+    - OBJECT mode: only on evaluated-geometry updates (transform-only and
+      idle ticks do no work). Modifier objects always refresh.
+    """
     if not overlay_controller.is_running:
         return
 
-    # 1. Update selection state
-    current_names = {
-        obj.name for obj in bpy.context.selected_objects if obj.type == "MESH"
-    }
+    try:
+        current_names = {
+            obj.name for obj in bpy.context.selected_objects if obj.type == "MESH"
+        }
+    except Exception:
+        return
     selection_changed = current_names != overlay_controller.displayed_objects
 
+    just_updated = set()
     if selection_changed:
-        overlay_controller.update_all_selected()
+        try:
+            overlay_controller.update_all_selected()
+            just_updated = set(overlay_controller.displayed_objects)
+            Mesh_Analysis_Overlay_Panel.clear_stats_cache()
+        except Exception:
+            pass
 
-    # 2. For REAL-TIME edit mode, always update if any edit mode object is displayed
-    edit_mode_objects = []
-    for name in overlay_controller.displayed_objects:
-        obj = bpy.data.objects.get(name)
-        if obj and obj.mode == "EDIT":
-            edit_mode_objects.append(obj)
-    
-    # CRITICAL: In edit mode, ALWAYS update regardless of depsgraph changes
-    # This ensures real-time tracking as the user edits, including undo operations
-    if edit_mode_objects:
-        dirty_objects = edit_mode_objects
-    else:
-        # For object mode, use the original logic
-        dirty_objects = set()
-        for name in overlay_controller.displayed_objects:
+    displayed = []
+    for name in list(overlay_controller.displayed_objects):
+        try:
             obj = bpy.data.objects.get(name)
-            if not obj:
-                continue
+        except Exception:
+            obj = None
+        if obj is not None:
+            displayed.append(obj)
 
-            # For objects with modifiers, always update to ensure we get the most current state
+    candidates = []
+    for obj in displayed:
+        if obj.name in just_updated:
+            continue
+        try:
+            is_edit = obj.mode == "EDIT"
+        except Exception:
+            continue
+        if is_edit:
+            candidates.append(obj)
+            continue
+        # OBJECT mode: modifiers always dirty; otherwise geometry-only.
+        try:
             has_modifiers = len(obj.modifiers) > 0
-            if has_modifiers:
-                dirty_objects.add(obj)
-                continue
-
-            # For Object Mode, check for any updates that might affect the mesh
+        except Exception:
+            has_modifiers = False
+        if has_modifiers:
+            candidates.append(obj)
+            continue
+        try:
             for update in depsgraph.updates:
                 if update.id == obj or update.id == obj.data:
-                    if update.is_updated_geometry or update.is_updated_transform:
-                        dirty_objects.add(obj)
+                    if update.is_updated_geometry:
+                        candidates.append(obj)
                         break
+        except Exception:
+            pass
 
-    # 3. Process all dirty objects - HANDLER drives the analysis flow
-    if dirty_objects:
-        Mesh_Analysis_Overlay_Panel.clear_stats_cache()
-        for obj in dirty_objects:
-            # Invalidate cache and trigger analysis
-            overlay_controller.analysis_engine.invalidate_cache(obj.name)
-            
-            # Get enabled features and colors
+    updated_any = False
+    for obj in candidates:
+        try:
             props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
-            enabled_features = []
-            feature_colors = {}
-            
             metadata = config_manager.get_metadata()
-            for category, features in metadata.items():
-                for feature in features:
-                    f_id = feature["id"]
-                    if getattr(props, f"{f_id}_enabled", False):
-                        enabled_features.append(f_id)
-                        feature_colors[f_id] = tuple(getattr(props, f"{f_id}_color"))
-            
-            # Get the most updated mesh from depsgraph here in handlers
-            bm = get_updated_bmesh_from_depsgraph(obj, depsgraph)
-            
+            enabled_features, feature_colors, _all = collect_enabled_features(props, metadata)
+        except Exception:
+            continue
+        # No enabled features: ensure no stale pipeline data, no analysis cost.
+        if not enabled_features:
             try:
-                # Perform analysis and get GPU data with the pre-created bmesh
-                gpu_results = overlay_controller.analysis_engine.analyze_and_format_mesh_with_bmesh(
-                    obj, enabled_features, feature_colors, bm
-                )
-                
-                # Update render pipeline with results
-                for f_id in enabled_features:
-                    if f_id in gpu_results:
-                        gpu_data = gpu_results[f_id]
+                present = overlay_controller.render_pipeline.render_data.get(obj.name, {})
+                if present:
+                    for f_id in list(present.keys()):
                         overlay_controller.render_pipeline.update_feature_data(
-                            obj.name, f_id, gpu_data.vertices, gpu_data.normals, gpu_data.colors, gpu_data.primitive_type
-                        )
-                    else:
-                        # Clear feature data if not found
-                        overlay_controller.render_pipeline.update_feature_data(
-                            obj.name,
-                            f_id,
-                            np.array([]),
-                            np.array([]),
-                            np.array([]),
+                            obj.name, f_id,
+                            np.zeros((0,), dtype=np.float32),
+                            np.zeros((0,), dtype=np.float32),
+                            np.zeros((0,), dtype=np.float32),
                             PrimitiveType.POINTS,
                         )
-            finally:
-                # Clean up bmesh - edit mode bmesh is managed by Blender
-                # but if we created a copy (for modifiers), we need to free it
-                if obj.mode == "EDIT" and len(obj.modifiers) > 0:
-                    # For edit mode with modifiers, we created a copy, so free it
-                    bm.free()
-                elif obj.mode != "EDIT":
-                    # For object mode, we created the bmesh, so free it
-                    bm.free()
-                # For edit mode without modifiers, Blender manages the bmesh, don't free
+                    updated_any = True
+            except Exception:
+                pass
+            continue
+        try:
+            bm = get_updated_bmesh_from_depsgraph(obj, depsgraph)
+        except Exception:
+            continue
+        try:
+            # EDIT: force fresh classification for realtime (undo/select/move).
+            # OBJECT: rely on version-aware engine cache (no-op when fresh).
+            try:
+                if obj.mode == "EDIT":
+                    overlay_controller.analysis_engine.invalidate_cache(obj.name)
+            except Exception:
+                pass
+            gpu_results = overlay_controller.analysis_engine.analyze_and_format_mesh_with_bmesh(
+                obj, enabled_features, feature_colors, bm
+            )
+            if _push_gpu_results(obj, enabled_features, gpu_results):
+                updated_any = True
+        except Exception:
+            pass
+        finally:
+            free_bmesh_if_owned(obj, bm)
 
-    # 4. Trigger redraws - more aggressive for edit mode
-    if dirty_objects or selection_changed:
-        # Force immediate viewport redraw for edit mode objects
-        if edit_mode_objects:
-            # Tag all 3D viewports for immediate redraw - most aggressive approach
-            for window in bpy.context.window_manager.windows:
-                for area in window.screen.areas:
-                    if area.type == "VIEW_3D":
-                        area.tag_redraw()
-        else:
-            # Standard redraw for object mode
-            tag_redraw_viewports()
-    elif edit_mode_objects:
-        # Even if no dirty objects detected, still redraw viewports if in edit mode
-        # This ensures the overlay stays visible during editing and captures undo operations
-        for window in bpy.context.window_manager.windows:
-            for area in window.screen.areas:
-                if area.type == "VIEW_3D":
-                    area.tag_redraw()
+    if updated_any or selection_changed:
+        if updated_any:
+            Mesh_Analysis_Overlay_Panel.clear_stats_cache()
+        tag_redraw_viewports()
 
 
 def update_overlay_enabled_toggles(self, context):
@@ -141,100 +221,116 @@ def update_overlay_enabled_toggles(self, context):
     # Just refresh selection/visibility - engine handles caching
     overlay_controller.update_all_selected()
     if context and hasattr(context, "area") and context.area:
-        context.area.tag_redraw()
+        try:
+            context.area.tag_redraw()
+        except Exception:
+            pass
 
 
 def update_overlay_properties(self, context):
     """Callback for visual property updates (offset, size, etc.)"""
     if not overlay_controller.is_running:
         return
-    
-    # Check if this is the non_planar_threshold property - it affects analysis
-    # Try multiple ways to detect the property change
+
     property_name = None
-    if hasattr(context, 'property'):
+    if context is not None and hasattr(context, 'property'):
         property_name = context.property
-        # Handle tuple format: (scene, 'property_path', -1)
         if isinstance(property_name, tuple) and len(property_name) >= 2:
             property_name = property_name[1]
-            # Extract just the property name from the full path
             if '.' in property_name:
                 property_name = property_name.split('.')[-1]
-    elif hasattr(context, 'property_name'):
+    elif context is not None and hasattr(context, 'property_name'):
         property_name = context.property_name
-    
-    # Check if this is a color property change - more robust detection
+
     is_color_property = (
-        property_name and 
+        property_name and
         (
-            property_name.endswith('_color') or 
+            property_name.endswith('_color') or
             'color' in property_name.lower()
         )
     )
-    
-    # Always invalidate non_planar_faces cache when threshold might have changed
-    # This is a bit aggressive but ensures updates work
+
     threshold_changed = (
         property_name == 'non_planar_threshold'
     )
-    
+
     if threshold_changed:
-        # Invalidate cache for non_planar_faces feature since threshold changed
         for obj_name in overlay_controller.displayed_objects:
-            overlay_controller.analysis_engine.invalidate_cache(obj_name, ['non_planar_faces'])
-        # Trigger analysis update
+            try:
+                overlay_controller.analysis_engine.invalidate_cache(obj_name, ['non_planar_faces'])
+            except Exception:
+                pass
         overlay_controller.update_all_selected()
     elif is_color_property:
-        # For color changes, use optimized real-time update without reanalysis
         _update_colors_realtime(property_name)
     else:
-        # For other visual properties (offset, sizes), we need to rebuild GPU batches
-        # Mark all displayed objects as dirty to force batch rebuild
         for obj_name in overlay_controller.displayed_objects:
-            overlay_controller.render_pipeline._dirty_objects.add(obj_name)
-        # Trigger redraw
+            try:
+                overlay_controller.render_pipeline._dirty_objects.add(obj_name)
+            except Exception:
+                pass
         tag_redraw_viewports()
 
 
 def _update_colors_realtime(changed_property_name: str):
     """Optimized real-time color update without triggering reanalysis"""
-    props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
-    
-    # Extract feature ID from property name (e.g., "tri_faces_color" -> "tri_faces")
+    try:
+        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+    except Exception:
+        return
+
     if changed_property_name.endswith('_color'):
-        feature_id = changed_property_name[:-6]  # Remove "_color" suffix
+        feature_id = changed_property_name[:-6]
     else:
-        # Fallback: try to find matching feature by checking all color properties
         feature_id = None
         for obj_name in overlay_controller.displayed_objects:
-            if obj_name in overlay_controller.render_pipeline.render_data:
-                for existing_feature_id in overlay_controller.render_pipeline.render_data[obj_name].keys():
+            try:
+                render_data = overlay_controller.render_pipeline.render_data.get(obj_name, {})
+            except Exception:
+                continue
+            for existing_feature_id in list(render_data.keys()):
+                try:
                     if hasattr(props, f"{existing_feature_id}_color"):
                         feature_id = existing_feature_id
                         break
-                if feature_id:
-                    break
-    
+                except Exception:
+                    continue
+            if feature_id:
+                break
+
     if not feature_id:
         return
-    
-    # Get the new color for this feature
-    new_color = tuple(getattr(props, f"{feature_id}_color"))
-    
-    # Update colors for all displayed objects that have this feature using the efficient method
+
+    try:
+        new_color = tuple(getattr(props, f"{feature_id}_color"))
+    except Exception:
+        return
+
     for obj_name in overlay_controller.displayed_objects:
-        overlay_controller.render_pipeline.update_feature_colors_only(obj_name, feature_id, new_color)
-    
-    # Trigger redraw to show color changes immediately
+        try:
+            overlay_controller.render_pipeline.update_feature_colors_only(obj_name, feature_id, new_color)
+        except Exception:
+            continue
+
     tag_redraw_viewports()
 
 
 def tag_redraw_viewports():
     """Trigger redraw for all 3D viewports"""
-    for window in bpy.context.window_manager.windows:
-        for area in window.screen.areas:
-            if area.type == "VIEW_3D":
-                area.tag_redraw()
+    try:
+        for window in bpy.context.window_manager.windows:
+            try:
+                screen = window.screen
+            except Exception:
+                continue
+            for area in screen.areas:
+                if area.type == "VIEW_3D":
+                    try:
+                        area.tag_redraw()
+                    except Exception:
+                        continue
+    except Exception:
+        pass
 
 
 def register():
@@ -245,3 +341,8 @@ def register():
 def unregister():
     if update_analysis_overlay in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(update_analysis_overlay)
+    _last_topo.clear()
+    _last_pos_hash.clear()
+    _last_enabled_key.clear()
+    _last_threshold.clear()
+    _last_time.clear()

@@ -310,67 +310,102 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     )
 
 
-def register():
-    bpy.utils.register_class(Mesh_Analysis_Overlay_Props)
-    bpy.types.Scene.Mesh_Analysis_Overlay_Properties = PointerProperty(
-        type=Mesh_Analysis_Overlay_Props
-    )
-    
-    # Initialize properties with defaults for new blend files
-    def load_handler(dummy):
-        context = bpy.context
-        if hasattr(context.scene, 'Mesh_Analysis_Overlay_Properties'):
-            props = context.scene.Mesh_Analysis_Overlay_Properties
-            # Only set defaults if properties are at their initial values
-            # This prevents overwriting user changes when loading existing files
-            if props.tri_faces_color == (1.0, 0.0, 0.0, 0.5):  # Check if at default
-                apply_preference_defaults(context)
-    
-    def apply_preference_defaults(context):
+def apply_preference_defaults(context):
+    props = context.scene.Mesh_Analysis_Overlay_Properties
+    try:
+        addon_name = get_addon_name()
+        prefs = context.preferences.addons[addon_name].preferences
+
+        # Apply color defaults
+        color_mappings = [
+            (props.tri_faces_color, prefs.tri_faces_color),
+            (props.quad_faces_color, prefs.quad_faces_color),
+            (props.ngon_faces_color, prefs.ngon_faces_color),
+            (props.non_planar_faces_color, prefs.non_planar_faces_color),
+            (props.degenerate_faces_color, prefs.degenerate_faces_color),
+            (props.non_manifold_e_edges_color, prefs.non_manifold_e_edges_color),
+            (props.sharp_edges_color, prefs.sharp_edges_color),
+            (props.seam_edges_color, prefs.seam_edges_color),
+            (props.boundary_edges_color, prefs.boundary_edges_color),
+            (props.single_vertices_color, prefs.single_vertices_color),
+            (props.non_manifold_v_vertices_color, prefs.non_manifold_v_vertices_color),
+            (props.n_pole_vertices_color, prefs.n_pole_vertices_color),
+            (props.e_pole_vertices_color, prefs.e_pole_vertices_color),
+            (props.high_pole_vertices_color, prefs.high_pole_vertices_color)
+        ]
+
+        for prop_array, pref_color in color_mappings:
+            for i in range(4):
+                prop_array[i] = pref_color[i]
+
+        # Apply overlay setting defaults
+        props.overlay_offset = prefs.default_overlay_offset
+        props.overlay_vertex_radius = prefs.default_overlay_vertex_radius
+        props.overlay_edge_width = prefs.default_overlay_edge_width
+        props.non_planar_threshold = prefs.default_non_planar_threshold
+
+    except Exception:
+        # Fallback to config file if preferences not available
+        pass
+
+
+def _load_handler(dummy):
+    context = bpy.context
+    if hasattr(context.scene, 'Mesh_Analysis_Overlay_Properties'):
         props = context.scene.Mesh_Analysis_Overlay_Properties
+        # Only set defaults if properties are at their initial values
+        # This prevents overwriting user changes when loading existing files
         try:
-            addon_name = get_addon_name()
-            prefs = context.preferences.addons[addon_name].preferences
-            
-            # Apply color defaults
-            color_mappings = [
-                (props.tri_faces_color, prefs.tri_faces_color),
-                (props.quad_faces_color, prefs.quad_faces_color),
-                (props.ngon_faces_color, prefs.ngon_faces_color),
-                (props.non_planar_faces_color, prefs.non_planar_faces_color),
-                (props.degenerate_faces_color, prefs.degenerate_faces_color),
-                (props.non_manifold_e_edges_color, prefs.non_manifold_edges_color),
-                (props.sharp_edges_color, prefs.sharp_edges_color),
-                (props.seam_edges_color, prefs.seam_edges_color),
-                (props.boundary_edges_color, prefs.boundary_edges_color),
-                (props.single_vertices_color, prefs.single_vertices_color),
-                (props.non_manifold_v_vertices_color, prefs.non_manifold_vertices_color),
-                (props.n_pole_vertices_color, prefs.n_pole_vertices_color),
-                (props.e_pole_vertices_color, prefs.e_pole_vertices_color),
-                (props.high_pole_vertices_color, prefs.high_pole_vertices_color)
-            ]
-            
-            for prop_array, pref_color in color_mappings:
-                for i in range(4):
-                    prop_array[i] = pref_color[i]
-            
-            # Apply overlay setting defaults
-            props.overlay_offset = prefs.default_overlay_offset
-            props.overlay_vertex_radius = prefs.default_overlay_vertex_radius
-            props.overlay_edge_width = prefs.default_overlay_edge_width
-            props.non_planar_threshold = prefs.default_non_planar_threshold
-            
-        except:
-            # Fallback to config file if preferences not available
+            if tuple(props.tri_faces_color) == (1.0, 0.0, 0.0, 0.5):  # Check if at default
+                apply_preference_defaults(context)
+        except Exception:
             pass
-    
-    bpy.app.handlers.load_post.append(load_handler)
+
+
+# Back-compat alias (old nested name).
+def load_handler(dummy):
+    return _load_handler(dummy)
+
+
+def register():
+    try:
+        bpy.utils.register_class(Mesh_Analysis_Overlay_Props)
+    except Exception:
+        # Idempotent: already registered (e.g. double register in tests).
+        pass
+    try:
+        bpy.types.Scene.Mesh_Analysis_Overlay_Properties = PointerProperty(
+            type=Mesh_Analysis_Overlay_Props
+        )
+    except Exception:
+        pass
+
+    # Initialize properties with defaults for new blend files (idempotent).
+    try:
+        if _load_handler not in bpy.app.handlers.load_post:
+            bpy.app.handlers.load_post.append(_load_handler)
+    except Exception:
+        pass
 
 
 def unregister():
-    # Remove load handler
-    if hasattr(bpy.app, 'handlers') and hasattr(bpy.app.handlers, 'load_post'):
-        bpy.app.handlers.load_post.clear()
-    
-    del bpy.types.Scene.Mesh_Analysis_Overlay_Properties
-    bpy.utils.unregister_class(Mesh_Analysis_Overlay_Props)
+    # Remove only our load handler (do not clear unrelated handlers).
+    try:
+        if hasattr(bpy.app, 'handlers') and hasattr(bpy.app.handlers, 'load_post'):
+            for fn in list(bpy.app.handlers.load_post):
+                if fn is _load_handler or getattr(fn, "__name__", "") in ("_load_handler", "load_handler"):
+                    try:
+                        bpy.app.handlers.load_post.remove(fn)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+    try:
+        del bpy.types.Scene.Mesh_Analysis_Overlay_Properties
+    except Exception:
+        pass
+    try:
+        bpy.utils.unregister_class(Mesh_Analysis_Overlay_Props)
+    except Exception:
+        pass

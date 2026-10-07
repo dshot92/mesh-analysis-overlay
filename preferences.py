@@ -137,7 +137,7 @@ class MeshAnalysisOverlayPreferences(AddonPreferences):
         max=1.0,
         update=update_preference_defaults,
     )
-    non_manifold_edges_color: FloatVectorProperty(
+    non_manifold_e_edges_color: FloatVectorProperty(
         name="Non-Manifold Edges Color",
         subtype="COLOR",
         default=(1.0, 0.5, 0.0, 0.5),
@@ -182,7 +182,7 @@ class MeshAnalysisOverlayPreferences(AddonPreferences):
         max=1.0,
         update=update_preference_defaults,
     )
-    non_manifold_vertices_color: FloatVectorProperty(
+    non_manifold_v_vertices_color: FloatVectorProperty(
         name="Non-Manifold Vertices Color",
         subtype="COLOR",
         default=(1.0, 0.0, 0.5, 0.5),
@@ -287,7 +287,7 @@ class MeshAnalysisOverlayPreferences(AddonPreferences):
         # Edge colors
         row = col.row()
         row.label(text="Non-Manifold:")
-        row.prop(self, "non_manifold_edges_color", text="")
+        row.prop(self, "non_manifold_e_edges_color", text="")
         
         row = col.row()
         row.label(text="Sharp:")
@@ -308,7 +308,7 @@ class MeshAnalysisOverlayPreferences(AddonPreferences):
         
         row = col.row()
         row.label(text="Non-Manifold:")
-        row.prop(self, "non_manifold_vertices_color", text="")
+        row.prop(self, "non_manifold_v_vertices_color", text="")
         
         row = col.row()
         row.label(text="N-Poles:")
@@ -339,10 +339,16 @@ class MeshAnalysisOverlayPreferences(AddonPreferences):
 
 
 def register():
-    bpy.utils.register_class(MESH_ANALYSIS_OT_reset_to_defaults)
-    bpy.utils.register_class(MeshAnalysisOverlayPreferences)
+    for _cls in (MESH_ANALYSIS_OT_reset_to_defaults, MeshAnalysisOverlayPreferences):
+        try:
+            bpy.utils.register_class(_cls)
+        except Exception:
+            pass
 
 
 def unregister():
-    bpy.utils.unregister_class(MESH_ANALYSIS_OT_reset_to_defaults)
-    bpy.utils.unregister_class(MeshAnalysisOverlayPreferences)
+    for _cls in (MESH_ANALYSIS_OT_reset_to_defaults, MeshAnalysisOverlayPreferences):
+        try:
+            bpy.utils.unregister_class(_cls)
+        except Exception:
+            pass

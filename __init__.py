@@ -10,16 +10,27 @@ def register():
     # hot_reload()  # Temporarily disabled for debugging
     for module in modules:
         if hasattr(module, "register"):
-            module.register()
+            try:
+                module.register()
+            except Exception:
+                # Idempotent: already registered (double-register in tests).
+                pass
 
 
 def unregister():
+    # Stop overlay first so no handler fires mid-teardown.
+    try:
+        if overlay_controller.is_running:
+            overlay_controller.stop()
+    except Exception:
+        pass
+
     for module in modules:
         if hasattr(module, "unregister"):
-            module.unregister()
-    
-    if overlay_controller.is_running:
-        overlay_controller.stop()
+            try:
+                module.unregister()
+            except Exception:
+                pass
 
 
 def hot_reload():

@@ -28,11 +28,21 @@ class RenderData:
     count: int = 0
 
     def __post_init__(self):
-        self.count = len(self.vertices)
+        try:
+            self.count = len(self.vertices)
+        except Exception:
+            self.count = 0
 
 
 class RenderPipeline:
-    """Modern rendering pipeline using native POINT shaders"""
+    """Batched rendering pipeline using merged per-type GPU batches.
+
+    Public API is unchanged (update_feature_data / update_feature_colors_only /
+    clear_object_data / clear_all). Internally, features sharing a primitive
+    type are merged into a single GPU batch per (object, primitive type),
+    cutting draw calls from N_features to at most 3 per object and halving
+    CPU offset temporaries.
+    """
 
     def __init__(self):
         # Shaders for different primitive types
@@ -43,12 +53,17 @@ class RenderPipeline:
         }
         # Nested dict: obj_name -> feature_id -> RenderData
         self.render_data: Dict[str, Dict[str, RenderData]] = {}
-        # Nested dict: obj_name -> feature_id -> GPU Batch
-        self.gpu_batches: Dict[str, Dict[str, any]] = {}
+        # Merged batches: obj_name -> PrimitiveType -> GPU Batch
+        # (changed from per-feature to per-type merging; only used internally)
+        self.gpu_batches: Dict[str, Dict[any, any]] = {}
         self.is_running = False
         self._handle = None
         # Track objects that need batch rebuilding
         self._dirty_objects: Set[str] = set()
+        # Draw-time caches to avoid per-frame Python scans.
+        self._xray_cached: bool = False
+        self._xray_frame: int = 0
+        self._mvp_cache: Dict[str, any] = {}
 
     def _ensure_shaders(self):
         """Initialize specialized shaders using official builtins"""
@@ -57,11 +72,11 @@ class RenderPipeline:
             self.shaders[PrimitiveType.TRIS] = gpu.shader.from_builtin("FLAT_COLOR")
 
             # Polyline shader for consistent width
-            self.shaders[PrimitiveType.LINES] = gpu.shader.from_builtin( "POLYLINE_FLAT_COLOR")
+            self.shaders[PrimitiveType.LINES] = gpu.shader.from_builtin("POLYLINE_FLAT_COLOR")
 
             # Native Point shader for vertices
             # In Blender 4.x/5.x, POINT_FLAT_COLOR is the correct builtin
-            self.shaders[PrimitiveType.POINTS] = gpu.shader.from_builtin( "POINT_FLAT_COLOR")
+            self.shaders[PrimitiveType.POINTS] = gpu.shader.from_builtin("POINT_FLAT_COLOR")
 
     def start(self):
         """Start the render pipeline"""
@@ -90,38 +105,34 @@ class RenderPipeline:
         self.render_data.clear()
         self.gpu_batches.clear()
         self._dirty_objects.clear()
+        self._mvp_cache.clear()
 
     def update_feature_colors_only(self, obj_name: str, feature_id: str, new_color: tuple):
-        """Efficient color-only update without rebuilding GPU batches"""
+        """Efficient color-only update without immediate GPU rebuild.
+
+        Updates the stored colors in place and defers the merged batch rebuild
+        to _update_batches (runs once before the next draw). This coalesces
+        rapid slider drags into a single rebuild.
+        """
         if obj_name not in self.render_data:
             return
-        
+
         obj_render_data = self.render_data[obj_name]
         if feature_id not in obj_render_data:
             return
-        
+
         render_data = obj_render_data[feature_id]
-        
-        # Update colors in place - this is the key optimization
-        render_data.colors[:] = np.full_like(render_data.colors, new_color, dtype=np.float32)
-        
-        # Update GPU batch if it exists
-        if obj_name in self.gpu_batches and feature_id in self.gpu_batches[obj_name]:
-            # Get current offset value
-            props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
-            offset_val = props.overlay_offset
-            
-            # Recreate batch with new colors (more efficient than full rebuild)
-            self._ensure_shaders()
-            offset_verts = render_data.vertices + render_data.normals * offset_val
-            
-            batch = batch_for_shader(
-                self.shaders[render_data.primitive_type],
-                render_data.primitive_type.value,
-                {"pos": offset_verts, "color": render_data.colors},
-            )
-            
-            self.gpu_batches[obj_name][feature_id] = batch
+
+        try:
+            # In-place update avoids reallocating the color array.
+            render_data.colors[:] = new_color
+        except Exception:
+            try:
+                render_data.colors = np.full((len(render_data.vertices), 4), new_color, dtype=np.float32)
+            except Exception:
+                return
+
+        self._dirty_objects.add(obj_name)
 
     def clear_object_data(self, obj_name: str):
         """Remove data for a specific object"""
@@ -129,6 +140,8 @@ class RenderPipeline:
             del self.render_data[obj_name]
         if obj_name in self.gpu_batches:
             del self.gpu_batches[obj_name]
+        if obj_name in self._mvp_cache:
+            del self._mvp_cache[obj_name]
         if obj_name in self._dirty_objects:
             self._dirty_objects.remove(obj_name)
 
@@ -145,59 +158,154 @@ class RenderPipeline:
         if obj_name not in self.render_data:
             self.render_data[obj_name] = {}
 
-        if len(vertices) == 0:
+        try:
+            v_len = len(vertices)
+        except Exception:
+            v_len = 0
+        if v_len == 0:
             if feature in self.render_data[obj_name]:
                 del self.render_data[obj_name][feature]
-            if obj_name in self.gpu_batches and feature in self.gpu_batches[obj_name]:
-                del self.gpu_batches[obj_name][feature]
+                # Defer merged-batch rebuild; _update_batches drops empty types.
+                self._dirty_objects.add(obj_name)
+            if not self.render_data[obj_name]:
+                # No features left: drop batches immediately to avoid stale draws.
+                if obj_name in self.gpu_batches:
+                    del self.gpu_batches[obj_name]
+                self._dirty_objects.discard(obj_name)
             return
 
+        # Avoid copies when arrays are already float32 contiguous.
+        try:
+            v_arr = np.ascontiguousarray(vertices, dtype=np.float32)
+            n_arr = np.ascontiguousarray(normals, dtype=np.float32)
+            c_arr = np.ascontiguousarray(colors, dtype=np.float32)
+        except Exception:
+            return
+        # Guard ragged inputs (stale topology): trim to common length.
+        try:
+            n = min(len(v_arr), len(n_arr), len(c_arr))
+            if n == 0:
+                return
+            if len(v_arr) != n:
+                v_arr = v_arr[:n]
+            if len(n_arr) != n:
+                n_arr = n_arr[:n]
+            if len(c_arr) != n:
+                c_arr = c_arr[:n]
+        except Exception:
+            pass
+
         self.render_data[obj_name][feature] = RenderData(
-            vertices=vertices.astype(np.float32),
-            normals=normals.astype(np.float32),
-            colors=colors.astype(np.float32),
+            vertices=v_arr,
+            normals=n_arr,
+            colors=c_arr,
             primitive_type=primitive_type,
         )
         self._dirty_objects.add(obj_name)
 
     def _update_batches(self):
-        """Rebuild GPU batches using native primitives"""
+        """Rebuild merged GPU batches (one per object per primitive type)."""
         if not self._dirty_objects:
             return
 
         self._ensure_shaders()
 
-        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
-        offset_val = props.overlay_offset
+        try:
+            props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+            offset_val = float(props.overlay_offset)
+        except Exception:
+            offset_val = 0.0
 
         for obj_name in list(self._dirty_objects):
-            if obj_name not in self.render_data:
+            obj_features = self.render_data.get(obj_name)
+            if not obj_features:
+                if obj_name in self.gpu_batches:
+                    del self.gpu_batches[obj_name]
                 continue
+
+            # Group by primitive type.
+            grouped: Dict[PrimitiveType, list] = {}
+            for _fid, data in obj_features.items():
+                try:
+                    if len(data.vertices) == 0:
+                        continue
+                except Exception:
+                    continue
+                grouped.setdefault(data.primitive_type, []).append(data)
 
             if obj_name not in self.gpu_batches:
                 self.gpu_batches[obj_name] = {}
+            merged = self.gpu_batches[obj_name]
+            # Drop stale primitive types no longer present.
+            for stale in [k for k in list(merged.keys()) if k not in grouped]:
+                del merged[stale]
 
-            for feature, data in self.render_data[obj_name].items():
-                offset_verts = data.vertices + data.normals * offset_val
-
-                batch = batch_for_shader(
-                    self.shaders[data.primitive_type],
-                    data.primitive_type.value,
-                    {"pos": offset_verts, "color": data.colors},
-                )
-
-                self.gpu_batches[obj_name][feature] = batch
+            for prim_type, datas in grouped.items():
+                try:
+                    if len(datas) == 1:
+                        d = datas[0]
+                        # Single temp for offset; batch_for_shader copies to GPU.
+                        if offset_val != 0.0:
+                            offset_verts = d.vertices + d.normals * offset_val
+                        else:
+                            offset_verts = d.vertices
+                        batch = batch_for_shader(
+                            self.shaders[prim_type],
+                            prim_type.value,
+                            {"pos": offset_verts, "color": d.colors},
+                        )
+                    else:
+                        v_cat = np.concatenate([d.vertices for d in datas], axis=0)
+                        n_cat = np.concatenate([d.normals for d in datas], axis=0)
+                        c_cat = np.concatenate([d.colors for d in datas], axis=0)
+                        if offset_val != 0.0:
+                            # out= not usable (needs same shape out); single temp.
+                            offset_verts = v_cat + n_cat * offset_val
+                        else:
+                            offset_verts = v_cat
+                        batch = batch_for_shader(
+                            self.shaders[prim_type],
+                            prim_type.value,
+                            {"pos": offset_verts, "color": c_cat},
+                        )
+                    merged[prim_type] = batch
+                except Exception:
+                    # Keep previous batch on failure to avoid flicker.
+                    continue
 
         self._dirty_objects.clear()
+
+    def _is_xray_enabled(self) -> bool:
+        """Cached X-ray check (area scan at most every 30 draws)."""
+        self._xray_frame += 1
+        if self._xray_frame % 30 == 1:
+            try:
+                xray = False
+                for area in bpy.context.screen.areas:
+                    if area.type == 'VIEW_3D':
+                        for space in area.spaces:
+                            if space.type == 'VIEW_3D':
+                                if getattr(getattr(space, "shading", None), "show_xray", False):
+                                    xray = True
+                                    break
+                        if xray:
+                            break
+                self._xray_cached = xray
+            except Exception:
+                pass
+        return self._xray_cached
 
     def _draw(self):
         """Main draw callback"""
         if not self.is_running:
             return
 
-        selected_objs = [
-            obj for obj in bpy.context.selected_objects if obj.type == "MESH"
-        ]
+        try:
+            selected_objs = [
+                obj for obj in bpy.context.selected_objects if obj.type == "MESH"
+            ]
+        except Exception:
+            return
         if not selected_objs:
             return
 
@@ -205,29 +313,35 @@ class RenderPipeline:
             self._update_batches()
         self._ensure_shaders()
 
-        props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
-        v_radius = props.overlay_vertex_radius
-        region_3d = bpy.context.region_data
-        view_matrix = region_3d.view_matrix
-        proj_matrix = region_3d.window_matrix
-        viewport_size = gpu.state.viewport_get()[2:]
+        try:
+            props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+            v_radius = props.overlay_vertex_radius
+            edge_width = props.overlay_edge_width
+        except Exception:
+            return
+        try:
+            region_3d = bpy.context.region_data
+            view_matrix = region_3d.view_matrix
+            proj_matrix = region_3d.window_matrix
+        except Exception:
+            return
+        try:
+            viewport_size = gpu.state.viewport_get()[2:]
+        except Exception:
+            viewport_size = (1920, 1080)
+
+        # Precompute MVP once per object (was 3x per object before).
+        self._mvp_cache.clear()
+        for obj in selected_objs:
+            try:
+                self._mvp_cache[obj.name] = proj_matrix @ view_matrix @ obj.matrix_world
+            except Exception:
+                continue
 
         gpu.state.blend_set("ALPHA")
-        
-        # Check if X-ray mode is enabled and disable depth testing accordingly
-        xray_enabled = False
-        
-        # Properly check X-ray state by looking through 3D viewport spaces
-        for area in bpy.context.screen.areas:
-            if area.type == 'VIEW_3D':
-                for space in area.spaces:
-                    if space.type == 'VIEW_3D':
-                        if hasattr(space.shading, 'show_xray') and space.shading.show_xray:
-                            xray_enabled = True
-                            break
-                if xray_enabled:
-                    break
-        
+
+        xray_enabled = self._is_xray_enabled()
+
         if xray_enabled:
             gpu.state.depth_test_set("NONE")
             gpu.state.face_culling_set("NONE")  # Disable face culling to see back faces
@@ -235,25 +349,25 @@ class RenderPipeline:
             gpu.state.depth_test_set("LESS_EQUAL")
             gpu.state.face_culling_set("BACK")  # Enable back face culling by default
 
-        # 1. DRAW TRIS (Faces)
+        # 1. DRAW TRIS (Faces) — single merged batch per object.
         if self.shaders[PrimitiveType.TRIS]:
             shader = self.shaders[PrimitiveType.TRIS]
             shader.bind()
             self._draw_for_type(
-                shader, PrimitiveType.TRIS, selected_objs, view_matrix, proj_matrix
+                shader, PrimitiveType.TRIS, selected_objs
             )
 
         # 2. DRAW LINES (Edges)
         if self.shaders[PrimitiveType.LINES]:
             shader = self.shaders[PrimitiveType.LINES]
             shader.bind()
-            
+
             # Use only working uniforms from console output
             shader.uniform_float("viewportSize", viewport_size)
-            shader.uniform_float("lineWidth", props.overlay_edge_width)
-            
+            shader.uniform_float("lineWidth", edge_width)
+
             self._draw_for_type(
-                shader, PrimitiveType.LINES, selected_objs, view_matrix, proj_matrix
+                shader, PrimitiveType.LINES, selected_objs
             )
 
         # 3. DRAW POINTS (Native Vertex indicators)
@@ -263,31 +377,37 @@ class RenderPipeline:
 
             # Use only working uniforms from console output
             shader.uniform_float("size", v_radius)
-            
+
             # Fallback for state-based sizing
-            gpu.state.point_size_set(v_radius)
+            try:
+                gpu.state.point_size_set(v_radius)
+            except Exception:
+                pass
 
             self._draw_for_type(
-                shader, PrimitiveType.POINTS, selected_objs, view_matrix, proj_matrix
+                shader, PrimitiveType.POINTS, selected_objs
             )
 
         gpu.state.blend_set("NONE")
         gpu.state.face_culling_set("NONE")
 
     def _draw_for_type(
-        self, shader, prim_type, selected_objs, view_matrix, proj_matrix
+        self, shader, prim_type, selected_objs
     ):
-        """Helper to draw batches of a specific type for all objects"""
+        """Helper to draw merged batches of a specific type for all objects."""
         for obj in selected_objs:
-            obj_batches = self.gpu_batches.get(obj.name, {})
-            obj_data = self.render_data.get(obj.name, {})
-
-            mvp = proj_matrix @ view_matrix @ obj.matrix_world
-
-            # Use working MVP uniform (confirmed by console output)
-            shader.uniform_float("ModelViewProjectionMatrix", mvp)
-
-            for feature_id, batch in obj_batches.items():
-                data = obj_data.get(feature_id)
-                if data and data.primitive_type == prim_type:
-                    batch.draw(shader)
+            try:
+                batch = self.gpu_batches.get(obj.name, {}).get(prim_type)
+            except Exception:
+                continue
+            if batch is None:
+                continue
+            mvp = self._mvp_cache.get(obj.name)
+            if mvp is None:
+                continue
+            try:
+                # Use working MVP uniform (confirmed by console output)
+                shader.uniform_float("ModelViewProjectionMatrix", mvp)
+                batch.draw(shader)
+            except Exception:
+                continue
