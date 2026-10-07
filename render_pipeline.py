@@ -84,6 +84,19 @@ class RenderPipeline:
             return
 
         self.is_running = True
+        # Vulkan/Metal compat: control point size per-shader via the
+        # `size` uniform. When program_point_size is False (default),
+        # point_size_set() overwrites that uniform, so keep it enabled.
+        try:
+            if hasattr(gpu.state, "program_point_size_set"):
+                gpu.state.program_point_size_set(True)
+        except Exception:
+            pass
+        try:
+            if hasattr(gpu.platform, "backend_type_get"):
+                print(f"[Mesh Analysis Overlay] GPU backend: {gpu.platform.backend_type_get()}")
+        except Exception:
+            pass
         self._handle = bpy.types.SpaceView3D.draw_handler_add(
             self._draw, (), "WINDOW", "POST_VIEW"
         )
@@ -97,6 +110,13 @@ class RenderPipeline:
         if self._handle:
             bpy.types.SpaceView3D.draw_handler_remove(self._handle, "WINDOW")
             self._handle = None
+
+        # Restore default so other add-ons relying on point_size_set keep working.
+        try:
+            if hasattr(gpu.state, "program_point_size_set"):
+                gpu.state.program_point_size_set(False)
+        except Exception:
+            pass
 
         self.clear_all()
 
@@ -375,14 +395,16 @@ class RenderPipeline:
             shader = self.shaders[PrimitiveType.POINTS]
             shader.bind()
 
-            # Use only working uniforms from console output
-            shader.uniform_float("size", v_radius)
-
-            # Fallback for state-based sizing
+            # Vulkan/Metal-safe: size via uniform only. Do NOT call
+            # gpu.state.point_size_set() here: when program_point_size is
+            # False it overwrites this uniform, and it is ignored/emulated
+            # on Vulkan/Metal.
             try:
-                gpu.state.point_size_set(v_radius)
+                if hasattr(gpu.state, "program_point_size_set"):
+                    gpu.state.program_point_size_set(True)
             except Exception:
                 pass
+            shader.uniform_float("size", v_radius)
 
             self._draw_for_type(
                 shader, PrimitiveType.POINTS, selected_objs
