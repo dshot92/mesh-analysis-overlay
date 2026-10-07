@@ -229,6 +229,13 @@ def _update_overlay_enabled_toggles_inner(self, context):
         return
     # Just refresh selection/visibility - engine handles caching
     overlay_controller.update_all_selected()
+    # Feature set changed: panel stats are keyed per-object and would
+    # otherwise stay stale until selection/overlay restart.
+    try:
+        Mesh_Analysis_Overlay_Panel.clear_stats_cache()
+    except Exception:
+        pass
+    tag_redraw_viewports()
     if context and hasattr(context, "area") and context.area:
         try:
             context.area.tag_redraw()
@@ -270,6 +277,11 @@ def update_overlay_properties(self, context):
             except Exception:
                 pass
         overlay_controller.update_all_selected()
+        try:
+            Mesh_Analysis_Overlay_Panel.clear_stats_cache()
+        except Exception:
+            pass
+        tag_redraw_viewports()
     elif is_color_property:
         _update_colors_realtime(property_name)
     else:

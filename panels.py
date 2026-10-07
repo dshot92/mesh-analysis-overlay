@@ -109,22 +109,33 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             return
 
         for obj in selected_meshes:
-            # Get cached stats or calculate new ones
-            if obj.name not in self._stats_cache:
-                stats: Dict = {"features": {}}
+            # Collect all active features across categories once.
+            # Done before the cache check so the cache key reflects the
+            # current toggle set: toggling a feature must recompute even
+            # when the object selection did not change.
+            active_by_category = {}
+            all_active = []
+            for category, features in metadata.items():
+                active = [
+                    feature["id"]
+                    for feature in features
+                    if getattr(props, f"{feature['id']}_enabled", False)
+                ]
+                if active:
+                    active_by_category[category] = [f for f in features if f["id"] in active]
+                    all_active.extend(active)
 
-                # Collect all active features across categories once.
-                active_by_category = {}
-                all_active = []
-                for category, features in metadata.items():
-                    active = [
-                        feature["id"]
-                        for feature in features
-                        if getattr(props, f"{feature['id']}_enabled", False)
-                    ]
-                    if active:
-                        active_by_category[category] = [f for f in features if f["id"] in active]
-                        all_active.extend(active)
+            try:
+                threshold = float(getattr(props, "non_planar_threshold", 0.0))
+            except Exception:
+                threshold = 0.0
+            cache_key = (tuple(sorted(all_active)), threshold)
+            cached = self._stats_cache.get(obj.name)
+            if cached is not None and cached.get("_key") == cache_key:
+                stats = cached
+            else:
+                # Get cached stats or calculate new ones
+                stats: Dict = {"features": {}, "_key": cache_key}
 
                 if all_active:
                     # Fast path: all counts already cached (steady state, no BMesh).
@@ -175,10 +186,10 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
                                         cat_stats[feature["label"]] = 0
                                 else:
                                     # Check cache (may have been fresh without re-analysis)
-                                    cached = analysis_engine.get_cached_result(obj.name, feature["id"])
-                                    if cached is not None:
+                                    engine_cached = analysis_engine.get_cached_result(obj.name, feature["id"])
+                                    if engine_cached is not None:
                                         try:
-                                            cat_stats[feature["label"]] = len(cached.indices)
+                                            cat_stats[feature["label"]] = len(engine_cached.indices)
                                         except Exception:
                                             cat_stats[feature["label"]] = 0
                                     else:
