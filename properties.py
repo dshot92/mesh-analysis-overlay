@@ -37,6 +37,15 @@ def update_profile_enabled(self, context):
         pass
 
 
+def update_profile_autoprint(self, context):
+    """Auto-print toggle: no re-analysis, just console lines."""
+    try:
+        from .utils import set_profile_autoprint
+        set_profile_autoprint(bool(getattr(self, "profile_autoprint", False)))
+    except Exception:
+        pass
+
+
 def get_default_overlay_setting(setting_name):
     """Get default overlay setting from preferences or config"""
     try:
@@ -322,6 +331,13 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         description="Enable performance timers (console + dump). No re-analysis on toggle.",
         default=False,
         update=update_profile_enabled,
+    )
+
+    profile_autoprint: BoolProperty(
+        name="Auto-print Profile",
+        description="Print each timed operation directly to console (default off). No re-analysis on toggle.",
+        default=False,
+        update=update_profile_autoprint,
     )
 
 

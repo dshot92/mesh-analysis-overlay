@@ -80,6 +80,7 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         header.label(text="Profiling")
         if panel:
             panel.prop(props, "profile_enabled", text="Profile Timers")
+            panel.prop(props, "profile_autoprint", text="Auto-print")
             row = panel.row(align=True)
             row.operator("mesh_analysis.dump_profile", text="Dump", icon="CONSOLE")
             row.operator("mesh_analysis.reset_profile", text="Reset", icon="X")

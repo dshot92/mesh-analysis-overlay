@@ -14,6 +14,27 @@ _prof_lock = threading.Lock()
 _prof_totals: Dict[str, float] = {}
 _prof_counts: Dict[str, int] = {}
 _profile_manual: object = None
+_profile_autoprint: bool = False
+_AUTOPRINT_LABELS = frozenset({
+    "ctrl.update_overlay", "ctrl.update_all",
+    "handlers.depsgraph", "handlers.toggle",
+    "analyze.mesh", "analyze.format", "analyze.batch",
+})
+
+def _timestamp() -> str:
+    try:
+        t = time.time()
+        ms = int((t - int(t)) * 1000.0)
+        return time.strftime("%H:%M:%S", time.localtime(t)) + f".{ms:03d}"
+    except Exception:
+        return "--:--:--"
+
+def set_profile_autoprint(enabled: bool):
+    global _profile_autoprint
+    try:
+        _profile_autoprint = bool(enabled)
+    except Exception:
+        pass
 
 def set_profile_enabled(enabled: bool):
     global _profile_manual
@@ -51,6 +72,12 @@ def prof(label: str):
             with _prof_lock:
                 _prof_totals[label] = _prof_totals.get(label, 0.0) + dt
                 _prof_counts[label] = _prof_counts.get(label, 0) + 1
+                n = _prof_counts.get(label, 0)
+            try:
+                if _profile_autoprint and label in _AUTOPRINT_LABELS:
+                    print(f"[{_timestamp()}] [Profile] {label}: {dt*1000.0:.1f}ms (n={n})")
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -59,7 +86,7 @@ def prof_report(reset: bool = False) -> str:
         with _prof_lock:
             items = [(k, _prof_counts.get(k, 0), _prof_totals.get(k, 0.0)) for k in _prof_totals]
         items.sort(key=lambda x: -x[2])
-        lines = ["[MeshAnalysisProfile]"]
+        lines = [f"[MeshAnalysisProfile] {_timestamp()}"]
         for k, c, t in items:
             avg = (t / c * 1000.0) if c else 0.0
             lines.append(f"  {k}: total={t*1000.0:.1f}ms n={c} avg={avg:.2f}ms")
