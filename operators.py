@@ -24,6 +24,35 @@ class MESH_ANALYSIS_OT_restore_preferences(bpy.types.Operator):
         config = config_manager.load_config(use_preferences=True)
         config_manager.apply_config_to_scene(props, config)
 
+        # Bulk apply via indexed assignment does not reliably fire per-prop
+        # update callbacks, so force an explicit refresh (covers colors,
+        # sizes, offset and threshold in one go).
+        try:
+            if overlay_controller.is_running:
+                try:
+                    for obj_name in list(overlay_controller.displayed_objects):
+                        try:
+                            overlay_controller.analysis_engine.invalidate_cache(
+                                obj_name, ['non_planar_faces']
+                            )
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                overlay_controller.update_all_selected()
+                try:
+                    from .panels import Mesh_Analysis_Overlay_Panel
+                    Mesh_Analysis_Overlay_Panel.clear_stats_cache()
+                except Exception:
+                    pass
+                try:
+                    from .handlers import tag_redraw_viewports
+                    tag_redraw_viewports()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
         self.report({'INFO'}, "Restored from preferences")
         return {'FINISHED'}
 

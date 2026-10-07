@@ -54,6 +54,35 @@ class MESH_ANALYSIS_OT_reset_to_defaults(Operator):
             props = context.scene.Mesh_Analysis_Overlay_Properties
             config_manager.apply_config_to_scene(props, config)
 
+        # Same as restore_preferences: bulk apply may not fire update
+        # callbacks, so force an explicit refresh when running.
+        try:
+            from .overlay_controller import overlay_controller as _oc
+            if _oc.is_running:
+                try:
+                    for obj_name in list(_oc.displayed_objects):
+                        try:
+                            _oc.analysis_engine.invalidate_cache(
+                                obj_name, ['non_planar_faces']
+                            )
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                _oc.update_all_selected()
+                try:
+                    from .panels import Mesh_Analysis_Overlay_Panel
+                    Mesh_Analysis_Overlay_Panel.clear_stats_cache()
+                except Exception:
+                    pass
+                try:
+                    from .handlers import tag_redraw_viewports
+                    tag_redraw_viewports()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
         self.report({'INFO'}, "Reset to factory defaults")
         return {'FINISHED'}
 
