@@ -63,13 +63,15 @@ def register():
 
 def unregister():
     # Stop overlay first so no handler fires mid-teardown.
+    # Re-import: package-level overlay_controller may be stale after reloads.
     try:
-        if overlay_controller.is_running:
-            overlay_controller.stop()
+        from .overlay_controller import overlay_controller as _oc
+        if _oc.is_running:
+            _oc.stop()
     except Exception:
         pass
 
-    for module in modules:
+    for module in reversed(modules):
         if hasattr(module, "unregister"):
             try:
                 module.unregister()

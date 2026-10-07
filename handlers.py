@@ -13,16 +13,6 @@ from .utils import (
 )
 
 
-def _push_gpu_results(obj, enabled_features, gpu_results) -> bool:
-    """Push analysis results, skipping identical content.
-
-    Single source is OverlayController.push_gpu_results; kept as thin wrapper
-    for existing call sites.
-    Returns True when the pipeline was modified (needs redraw).
-    """
-    return overlay_controller.push_gpu_results(obj.name, enabled_features, gpu_results)
-
-
 @persistent
 def update_analysis_overlay(scene, depsgraph):
     with prof_scope("depsgraph"):
@@ -87,7 +77,8 @@ def _update_analysis_overlay_inner(scene, depsgraph):
             continue
         try:
             for update in depsgraph.updates:
-                if update.id == obj or update.id == obj.data:
+                update_orig = getattr(update.id, "original", update.id)
+                if update_orig == obj or update_orig == obj.data:
                     if update.is_updated_geometry:
                         candidates.append(obj)
                         break
@@ -123,17 +114,12 @@ def _update_analysis_overlay_inner(scene, depsgraph):
             with managed_bmesh(obj, depsgraph) as bm:
                 if bm is None:
                     continue
-                # EDIT: force fresh classification for realtime (undo/select/move).
-                # OBJECT: rely on version-aware engine cache (no-op when fresh).
-                try:
-                    if obj.mode == "EDIT":
-                        overlay_controller.analysis_engine.invalidate_cache(obj.name)
-                except Exception:
-                    pass
+                # Engine cache is version-aware (topo_sig + pos_hash); no forced
+                # invalidate here so idle depsgraph ticks stay no-ops.
                 gpu_results = overlay_controller.analysis_engine.analyze_and_format_mesh_with_bmesh(
                     obj, enabled_features, feature_colors, bm
                 )
-                if _push_gpu_results(obj, enabled_features, gpu_results):
+                if overlay_controller.push_gpu_results(obj.name, enabled_features, gpu_results):
                     updated_any = True
         except Exception:
             pass
@@ -228,21 +214,17 @@ def _update_colors_realtime(changed_property_name: str):
     if changed_property_name.endswith('_color'):
         feature_id = changed_property_name[:-6]
     else:
-        feature_id = None
-        for obj_name in overlay_controller.displayed_objects:
-            try:
-                render_data = overlay_controller.render_pipeline.render_data.get(obj_name, {})
-            except Exception:
-                continue
-            for existing_feature_id in list(render_data.keys()):
+        # Unknown property: mark everything dirty instead of guessing a feature.
+        try:
+            for obj_name in overlay_controller.displayed_objects:
                 try:
-                    if hasattr(props, f"{existing_feature_id}_color"):
-                        feature_id = existing_feature_id
-                        break
+                    overlay_controller.render_pipeline._dirty_objects.add(obj_name)
                 except Exception:
-                    continue
-            if feature_id:
-                break
+                    pass
+        except Exception:
+            pass
+        tag_redraw_viewports()
+        return
 
     if not feature_id:
         return

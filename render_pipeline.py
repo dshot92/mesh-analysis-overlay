@@ -63,7 +63,6 @@ class RenderPipeline:
         # Draw-time caches to avoid per-frame Python scans.
         self._xray_cached: bool = False
         self._xray_frame: int = 0
-        self._mvp_cache: Dict[str, any] = {}
 
     def _ensure_shaders(self):
         """Initialize specialized shaders using official builtins"""
@@ -125,7 +124,6 @@ class RenderPipeline:
         self.render_data.clear()
         self.gpu_batches.clear()
         self._dirty_objects.clear()
-        self._mvp_cache.clear()
 
     def update_feature_colors_only(self, obj_name: str, feature_id: str, new_color: tuple):
         """Efficient color-only update without immediate GPU rebuild.
@@ -160,8 +158,6 @@ class RenderPipeline:
             del self.render_data[obj_name]
         if obj_name in self.gpu_batches:
             del self.gpu_batches[obj_name]
-        if obj_name in self._mvp_cache:
-            del self._mvp_cache[obj_name]
         if obj_name in self._dirty_objects:
             self._dirty_objects.remove(obj_name)
 
@@ -206,6 +202,9 @@ class RenderPipeline:
             n = min(len(v_arr), len(n_arr), len(c_arr))
             if n == 0:
                 return
+            if len(v_arr) != n or len(n_arr) != n or len(c_arr) != n:
+                print(f"[Mesh Analysis Overlay] trimmed ragged {obj_name}:{feature} "
+                      f"to {n} (was {len(v_arr)}/{len(n_arr)}/{len(c_arr)})")
             if len(v_arr) != n:
                 v_arr = v_arr[:n]
             if len(n_arr) != n:
@@ -376,10 +375,10 @@ class RenderPipeline:
             viewport_size = (1920, 1080)
 
         # Precompute MVP once per object (was 3x per object before).
-        self._mvp_cache.clear()
+        mvp_cache = {}
         for obj in selected_objs:
             try:
-                self._mvp_cache[obj.name] = proj_matrix @ view_matrix @ obj.matrix_world
+                mvp_cache[obj.name] = proj_matrix @ view_matrix @ obj.matrix_world
             except Exception:
                 continue
 
@@ -399,7 +398,7 @@ class RenderPipeline:
             shader = self.shaders[PrimitiveType.TRIS]
             shader.bind()
             self._draw_for_type(
-                shader, PrimitiveType.TRIS, selected_objs
+                shader, PrimitiveType.TRIS, selected_objs, mvp_cache
             )
 
         # 2. DRAW LINES (Edges)
@@ -412,7 +411,7 @@ class RenderPipeline:
             shader.uniform_float("lineWidth", edge_width)
 
             self._draw_for_type(
-                shader, PrimitiveType.LINES, selected_objs
+                shader, PrimitiveType.LINES, selected_objs, mvp_cache
             )
 
         # 3. DRAW POINTS (Native Vertex indicators)
@@ -432,14 +431,14 @@ class RenderPipeline:
             shader.uniform_float("size", v_radius)
 
             self._draw_for_type(
-                shader, PrimitiveType.POINTS, selected_objs
+                shader, PrimitiveType.POINTS, selected_objs, mvp_cache
             )
 
         gpu.state.blend_set("NONE")
         gpu.state.face_culling_set("NONE")
 
     def _draw_for_type(
-        self, shader, prim_type, selected_objs
+        self, shader, prim_type, selected_objs, mvp_cache
     ):
         """Helper to draw merged batches of a specific type for all objects."""
         for obj in selected_objs:
@@ -449,7 +448,7 @@ class RenderPipeline:
                 continue
             if batch is None:
                 continue
-            mvp = self._mvp_cache.get(obj.name)
+            mvp = mvp_cache.get(obj.name)
             if mvp is None:
                 continue
             try:

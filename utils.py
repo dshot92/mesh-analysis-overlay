@@ -416,11 +416,8 @@ def get_updated_bmesh_from_depsgraph(obj: bpy.types.Object, depsgraph: bpy.types
                 edit_bm.edges.ensure_lookup_table()
                 edit_bm.faces.ensure_lookup_table()
 
-                # Create a copy to work with
-                bm = bmesh.new()
-                bm.from_mesh(edit_bm)
-
-                return bm
+                # Owned copy so caller can free it (from_edit_mesh is Blender-owned).
+                return edit_bm.copy()
             except Exception:
                 # If anything fails, fall back to edit mesh
                 bm = bmesh.from_edit_mesh(obj.data)

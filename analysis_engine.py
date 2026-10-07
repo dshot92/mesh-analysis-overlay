@@ -595,7 +595,7 @@ class MeshAnalysisEngine:
             elif dot < -1.0:
                 dot = -1.0
             angle = math.acos(dot)
-            if abs(angle - half_pi) > threshold_rad:
+            if abs(angle - half_pi) > threshold_rad + 1e-9:
                 return False
 
         return True
@@ -612,9 +612,15 @@ class MeshAnalysisEngine:
             verts = face.verts
             if len(verts) < 3:
                 return True
-            unique_verts = set(vert.co.to_tuple() for vert in verts)
-            if len(unique_verts) < len(verts):
-                return True
+            for i in range(len(verts)):
+                ci = verts[i].co
+                for j in range(i + 1, len(verts)):
+                    cj = verts[j].co
+                    dx = ci.x - cj.x
+                    dy = ci.y - cj.y
+                    dz = ci.z - cj.z
+                    if dx * dx + dy * dy + dz * dz < 1e-12:
+                        return True
         except Exception:
             return False
 

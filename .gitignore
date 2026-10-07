@@ -7,3 +7,6 @@ __pycache__/
 
 # Ignore the entire __pycache__ directory
 __pycache__/
+
+# Local user preferences (regenerated from CONFIG_DEFAULT.json at runtime)
+CONFIG_PREFERENCE.json

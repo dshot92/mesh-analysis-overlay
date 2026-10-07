@@ -9,8 +9,13 @@ def get_addon_name():
     # __package__ IS the addon name for Blender extensions
     return __package__
 
+# Guard so bulk apply (reset_to_defaults sets ~18 props) does one save, not 18.
+_applying_defaults = False
+
 def update_preference_defaults(self, context):
     """Automatically save preferences when they change"""
+    if _applying_defaults:
+        return
     # Create config from current preferences
     config = {
         "colors": {},
@@ -47,7 +52,14 @@ class MESH_ANALYSIS_OT_reset_to_defaults(Operator):
 
         addon_name = get_addon_name()
         prefs = context.preferences.addons[addon_name].preferences
-        config_manager.apply_config_to_preferences(prefs, config)
+        global _applying_defaults
+        _applying_defaults = True
+        try:
+            config_manager.apply_config_to_preferences(prefs, config)
+        finally:
+            _applying_defaults = False
+        # One save for the whole bulk apply (update callbacks were suppressed).
+        update_preference_defaults(prefs, context)
 
         # 3. Apply to current scene properties as well
         if hasattr(context.scene, 'Mesh_Analysis_Overlay_Properties'):
@@ -70,6 +82,14 @@ class MESH_ANALYSIS_OT_reset_to_defaults(Operator):
                 except Exception:
                     pass
                 _oc.update_all_selected()
+                try:
+                    for obj_name in list(_oc.displayed_objects):
+                        try:
+                            _oc.render_pipeline._dirty_objects.add(obj_name)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
                 try:
                     from .panels import Mesh_Analysis_Overlay_Panel
                     Mesh_Analysis_Overlay_Panel.clear_stats_cache()
@@ -245,7 +265,7 @@ class MeshAnalysisOverlayPreferences(AddonPreferences):
     default_non_planar_threshold: FloatProperty(
         name="Default Non-Planar Threshold",
         description="Default maximum angle deviation (in degrees) from face plane before considering it non-planar",
-        default=0.0,
+        default=0.001,
         min=0.0001,
         max=90.0,
         precision=4,

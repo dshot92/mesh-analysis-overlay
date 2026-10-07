@@ -30,7 +30,7 @@
       0.5,
       0.5
     ],
-    "non_manifold_edges": [
+    "non_manifold_e_edges": [
       0.0,
       1.0,
       0.327606737613678,
@@ -60,7 +60,7 @@
       0.0,
       0.5
     ],
-    "non_manifold_vertices": [
+    "non_manifold_v_vertices": [
       1.0,
       0.0,
       0.5,

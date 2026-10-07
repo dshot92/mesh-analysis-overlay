@@ -14,8 +14,6 @@ from .utils import (
     collect_enabled_features,
     note_overlay_start,
     note_overlay_stop,
-    prof,
-    prof_event,
     prof_scope,
 )
 
@@ -80,27 +78,6 @@ class OverlayController:
             return
         current_names = {obj.name for obj in selected_meshes}
         to_remove = self.displayed_objects - current_names
-        try:
-            added = current_names - self.displayed_objects
-            if added or to_remove:
-                prof_event(
-                    "selection changed: +"
-                    + ",".join(sorted(added) if added else ["-"])
-                    + " -"
-                    + ",".join(sorted(to_remove) if to_remove else ["-"])
-                )
-            try:
-                modes = []
-                for o in selected_meshes:
-                    try:
-                        modes.append(f"{o.name}[{o.mode}]")
-                    except Exception:
-                        pass
-                prof_event(f"selected(n={len(modes)}): {', '.join(sorted(modes)) if modes else '(none)'}")
-            except Exception:
-                pass
-        except Exception:
-            pass
         for name in to_remove:
             self.render_pipeline.clear_object_data(name)
             # Drop stale analysis cache for deselected objects to bound memory.

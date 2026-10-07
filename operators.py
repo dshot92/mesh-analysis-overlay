@@ -41,6 +41,14 @@ class MESH_ANALYSIS_OT_restore_preferences(bpy.types.Operator):
                     pass
                 overlay_controller.update_all_selected()
                 try:
+                    for obj_name in list(overlay_controller.displayed_objects):
+                        try:
+                            overlay_controller.render_pipeline._dirty_objects.add(obj_name)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                try:
                     from .panels import Mesh_Analysis_Overlay_Panel
                     Mesh_Analysis_Overlay_Panel.clear_stats_cache()
                 except Exception:
@@ -69,8 +77,6 @@ class Mesh_Analysis_Overlay(Operator):
             overlay_controller.stop()
         else:
             overlay_controller.start()
-            # Initial update for all selected objects
-            overlay_controller.update_all_selected()
 
         for area in context.screen.areas:
             if area.type == "VIEW_3D":
@@ -113,10 +119,21 @@ class Select_Feature_Elements(bpy.types.Operator):
 
         # Ensure we are in Edit Mode for selection
         was_edit = obj.mode == "EDIT"
+        prev_select_mode = None
+        try:
+            prev_select_mode = tuple(context.tool_settings.mesh_select_mode)
+        except Exception:
+            pass
         if not was_edit:
-            bpy.ops.object.mode_set(mode="EDIT")
-            # Default to vertex select if we had to switch
-            bpy.ops.mesh.select_mode(type="VERT")
+            try:
+                bpy.ops.object.mode_set(mode="EDIT")
+            except Exception:
+                self.report({"WARNING"}, "Could not enter Edit Mode")
+                return {"CANCELLED"}
+            try:
+                bpy.ops.mesh.select_mode(type="VERT")
+            except Exception:
+                pass
 
         mesh = obj.data
         bm = bmesh.from_edit_mesh(mesh)
@@ -135,6 +152,16 @@ class Select_Feature_Elements(bpy.types.Operator):
                     for item in item_list:
                         item.select = False
                 bmesh.update_edit_mesh(mesh)
+            if not was_edit:
+                try:
+                    if prev_select_mode is not None:
+                        context.tool_settings.mesh_select_mode = prev_select_mode
+                except Exception:
+                    pass
+                try:
+                    bpy.ops.object.mode_set(mode="OBJECT")
+                except Exception:
+                    pass
             self.report({"INFO"}, f"No {self.feature} elements found")
             return {"FINISHED"}
 
@@ -173,6 +200,17 @@ class Select_Feature_Elements(bpy.types.Operator):
 
         # 3. CRITICAL: Push changes back to the mesh
         bmesh.update_edit_mesh(mesh)
+
+        if not was_edit:
+            try:
+                if prev_select_mode is not None:
+                    context.tool_settings.mesh_select_mode = prev_select_mode
+            except Exception:
+                pass
+            try:
+                bpy.ops.object.mode_set(mode="OBJECT")
+            except Exception:
+                pass
 
         # Trigger overlay update if in edit mode to reflect potentially changed visibility (though usually selection doesn't change geometry)
         overlay_controller.update_overlay(obj)

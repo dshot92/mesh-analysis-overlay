@@ -285,7 +285,7 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
     non_planar_threshold: FloatProperty(
         name="Non-Planar Threshold",
         description="Maximum angle deviation (in degrees) from face plane before considering it non-planar",
-        default=0.0,
+        default=0.001,
         min=0.0001,
         max=90.0,
         precision=4,
@@ -345,9 +345,10 @@ def _load_handler(dummy):
     if hasattr(context.scene, 'Mesh_Analysis_Overlay_Properties'):
         props = context.scene.Mesh_Analysis_Overlay_Properties
         # Only set defaults if properties are at their initial values
-        # This prevents overwriting user changes when loading existing files
+        # This prevents overwriting user changes when loading existing files.
+        # Two independent checks so one user color matching a default is not enough.
         try:
-            if tuple(props.tri_faces_color) == (1.0, 0.0, 0.0, 0.5):  # Check if at default
+            if tuple(props.tri_faces_color) == (1.0, 0.0, 0.0, 0.5) and float(props.overlay_offset) == 0.01:
                 apply_preference_defaults(context)
         except Exception:
             pass
