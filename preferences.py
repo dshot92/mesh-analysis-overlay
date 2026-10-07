@@ -341,9 +341,13 @@ class MeshAnalysisOverlayPreferences(AddonPreferences):
 def register():
     for _cls in (MESH_ANALYSIS_OT_reset_to_defaults, MeshAnalysisOverlayPreferences):
         try:
+            try:
+                bpy.utils.unregister_class(_cls)
+            except Exception:
+                pass
             bpy.utils.register_class(_cls)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[Mesh Analysis Overlay] preferences register failed {_cls}: {e}")
 
 
 def unregister():

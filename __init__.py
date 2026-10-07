@@ -12,9 +12,9 @@ def register():
         if hasattr(module, "register"):
             try:
                 module.register()
-            except Exception:
+            except Exception as e:
                 # Idempotent: already registered (double-register in tests).
-                pass
+                print(f"[Mesh Analysis Overlay] register {module.__name__} failed: {e}")
 
 
 def unregister():

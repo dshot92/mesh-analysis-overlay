@@ -220,9 +220,13 @@ classes = (Mesh_Analysis_Overlay_Panel,)
 def register():
     for bl_class in classes:
         try:
+            try:
+                bpy.utils.unregister_class(bl_class)
+            except Exception:
+                pass
             bpy.utils.register_class(bl_class)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[Mesh Analysis Overlay] panel register failed {bl_class}: {e}")
 
 
 def unregister():

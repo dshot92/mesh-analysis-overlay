@@ -391,17 +391,32 @@ def load_handler(dummy):
 
 
 def register():
+    # Teardown-first: a changed PropertyGroup layout (added/removed props)
+    # does NOT reload correctly over an existing registration, so clear any
+    # previous registration before registering fresh. Safe when clean.
+    try:
+        if hasattr(bpy.types.Scene, 'Mesh_Analysis_Overlay_Properties'):
+            try:
+                del bpy.types.Scene.Mesh_Analysis_Overlay_Properties
+            except Exception:
+                pass
+    except Exception:
+        pass
+    try:
+        bpy.utils.unregister_class(Mesh_Analysis_Overlay_Props)
+    except Exception:
+        pass
     try:
         bpy.utils.register_class(Mesh_Analysis_Overlay_Props)
-    except Exception:
-        # Idempotent: already registered (e.g. double register in tests).
-        pass
+    except Exception as e:
+        print(f"[Mesh Analysis Overlay] properties register failed: {e}")
+        return
     try:
         bpy.types.Scene.Mesh_Analysis_Overlay_Properties = PointerProperty(
             type=Mesh_Analysis_Overlay_Props
         )
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[Mesh Analysis Overlay] scene pointer register failed: {e}")
 
     # Initialize properties with defaults for new blend files (idempotent).
     try:

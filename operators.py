@@ -174,12 +174,40 @@ classes = (
 )
 
 
+_LEGACY_OPS = (
+    "MESH_ANALYSIS_OT_dump_profile",
+    "MESH_ANALYSIS_OT_reset_profile",
+)
+
+
+def _unregister_legacy_ops():
+    """Best-effort removal of operator classes deleted from this module.
+
+    Only affects sessions that ran an intermediate local build registering
+    them; a Blender restart clears them regardless. Never raises.
+    """
+    for _name in _LEGACY_OPS:
+        try:
+            _cls = getattr(bpy.types, _name, None)
+            if _cls is not None:
+                try:
+                    bpy.utils.unregister_class(_cls)
+                except Exception:
+                    pass
+        except Exception:
+            continue
+
+
 def register():
     for cls in classes:
         try:
+            try:
+                bpy.utils.unregister_class(cls)
+            except Exception:
+                pass
             bpy.utils.register_class(cls)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[Mesh Analysis Overlay] operator register failed {cls}: {e}")
 
 
 def unregister():
@@ -194,3 +222,4 @@ def unregister():
             bpy.utils.unregister_class(cls)
         except Exception:
             pass
+    _unregister_legacy_ops()
