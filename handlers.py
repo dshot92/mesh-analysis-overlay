@@ -11,7 +11,6 @@ from .utils import (
     free_bmesh_if_owned,
     collect_enabled_features,
     prof,
-    dump_profile,
 )
 
 # Kept for unregister cleanup / external compat; freshness is now driven by

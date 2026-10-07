@@ -79,11 +79,7 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
         header, panel = layout.panel("profiling_panel", default_closed=True)
         header.label(text="Profiling")
         if panel:
-            panel.prop(props, "profile_enabled", text="Profile Timers")
-            panel.prop(props, "profile_autoprint", text="Auto-print")
-            row = panel.row(align=True)
-            row.operator("mesh_analysis.dump_profile", text="Dump", icon="CONSOLE")
-            row.operator("mesh_analysis.reset_profile", text="Reset", icon="X")
+            panel.prop(props, "profiling", text="Profiling", toggle=True)
 
     def draw_statistics(self, context, panel):
         """Draw statistics for all selected mesh objects.

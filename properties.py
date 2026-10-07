@@ -29,19 +29,18 @@ def get_default_color(feature_name):
     config = config_manager.load_config(use_preferences=True)
     return tuple(config.get("colors", {}).get(feature_name, [1.0, 0.0, 0.0, 0.5]))
 
-def update_profile_enabled(self, context):
+def update_profiling(self, context):
+    """Single Profiling toggle: timers + direct console lines. No re-analysis."""
     try:
-        from .utils import set_profile_enabled
-        set_profile_enabled(bool(getattr(self, "profile_enabled", False)))
-    except Exception:
-        pass
-
-
-def update_profile_autoprint(self, context):
-    """Auto-print toggle: no re-analysis, just console lines."""
-    try:
-        from .utils import set_profile_autoprint
-        set_profile_autoprint(bool(getattr(self, "profile_autoprint", False)))
+        from .utils import set_profile_enabled, set_profile_autoprint, prof_report
+        enabled = bool(getattr(self, "profiling", False))
+        set_profile_enabled(enabled)
+        set_profile_autoprint(enabled)
+        if enabled:
+            try:
+                prof_report(reset=True)
+            except Exception:
+                pass
     except Exception:
         pass
 
@@ -326,18 +325,11 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         update=handlers.update_overlay_properties,
     )
 
-    profile_enabled: BoolProperty(
-        name="Profile Timers",
-        description="Enable performance timers (console + dump). No re-analysis on toggle.",
+    profiling: BoolProperty(
+        name="Profiling",
+        description="Enable performance timers with direct console output. No re-analysis on toggle.",
         default=False,
-        update=update_profile_enabled,
-    )
-
-    profile_autoprint: BoolProperty(
-        name="Auto-print Profile",
-        description="Print each timed operation directly to console (default off). No re-analysis on toggle.",
-        default=False,
-        update=update_profile_autoprint,
+        update=update_profiling,
     )
 
 
