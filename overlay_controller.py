@@ -12,6 +12,7 @@ from .utils import (
     get_updated_bmesh_from_depsgraph,
     free_bmesh_if_owned,
     collect_enabled_features,
+    prof,
 )
 
 
@@ -65,6 +66,10 @@ class OverlayController:
         _clear_panel_stats_cache()
 
     def update_all_selected(self):
+        with prof("ctrl.update_all"):
+            return self._update_all_selected_inner()
+
+    def _update_all_selected_inner(self):
         if not self.is_running:
             return
 
@@ -129,6 +134,10 @@ class OverlayController:
         return True
 
     def update_overlay(self, obj: Object):
+        with prof("ctrl.update_overlay"):
+            return self._update_overlay_inner(obj)
+
+    def _update_overlay_inner(self, obj: Object):
         """Update overlay for a specific object - called by handlers only"""
         if not self.is_running or not obj or obj.type != "MESH":
             return

@@ -29,6 +29,14 @@ def get_default_color(feature_name):
     config = config_manager.load_config(use_preferences=True)
     return tuple(config.get("colors", {}).get(feature_name, [1.0, 0.0, 0.0, 0.5]))
 
+def update_profile_enabled(self, context):
+    try:
+        from .utils import set_profile_enabled
+        set_profile_enabled(bool(getattr(self, "profile_enabled", False)))
+    except Exception:
+        pass
+
+
 def get_default_overlay_setting(setting_name):
     """Get default overlay setting from preferences or config"""
     try:
@@ -307,6 +315,13 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
         max=90.0,
         precision=4,
         update=handlers.update_overlay_properties,
+    )
+
+    profile_enabled: BoolProperty(
+        name="Profile Timers",
+        description="Enable performance timers (console + dump). No re-analysis on toggle.",
+        default=False,
+        update=update_profile_enabled,
     )
 
 

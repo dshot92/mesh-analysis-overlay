@@ -3,7 +3,83 @@
 import bpy
 import bmesh
 import numpy as np
+import os
+import time
+import threading
+from contextlib import contextmanager
 from typing import Dict, List, Tuple
+
+# ---- Lightweight profiling (env-gated, zero-cost when off) ----
+_prof_lock = threading.Lock()
+_prof_totals: Dict[str, float] = {}
+_prof_counts: Dict[str, int] = {}
+_profile_manual: object = None
+
+def set_profile_enabled(enabled: bool):
+    global _profile_manual
+    try:
+        _profile_manual = bool(enabled)
+        try:
+            os.environ["MESH_ANALYSIS_PROFILE"] = "1" if enabled else "0"
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+def _profile_enabled() -> bool:
+    try:
+        if _profile_manual is not None:
+            return bool(_profile_manual)
+    except Exception:
+        pass
+    try:
+        return os.getenv("MESH_ANALYSIS_PROFILE", "0") == "1"
+    except Exception:
+        return False
+
+@contextmanager
+def prof(label: str):
+    if not _profile_enabled():
+        yield
+        return
+    t0 = time.perf_counter()
+    try:
+        yield
+    finally:
+        try:
+            dt = time.perf_counter() - t0
+            with _prof_lock:
+                _prof_totals[label] = _prof_totals.get(label, 0.0) + dt
+                _prof_counts[label] = _prof_counts.get(label, 0) + 1
+        except Exception:
+            pass
+
+def prof_report(reset: bool = False) -> str:
+    try:
+        with _prof_lock:
+            items = [(k, _prof_counts.get(k, 0), _prof_totals.get(k, 0.0)) for k in _prof_totals]
+        items.sort(key=lambda x: -x[2])
+        lines = ["[MeshAnalysisProfile]"]
+        for k, c, t in items:
+            avg = (t / c * 1000.0) if c else 0.0
+            lines.append(f"  {k}: total={t*1000.0:.1f}ms n={c} avg={avg:.2f}ms")
+        out = "\n".join(lines)
+    except Exception as e:
+        out = f"[MeshAnalysisProfile] error {e}"
+    if reset:
+        try:
+            with _prof_lock:
+                _prof_totals.clear()
+                _prof_counts.clear()
+        except Exception:
+            pass
+    return out
+
+def dump_profile(reset: bool = False):
+    try:
+        print(prof_report(reset=reset))
+    except Exception:
+        pass
 
 # Features whose classification depends on vertex positions (not just topology).
 # All other features depend only on counts / connectivity / flags.

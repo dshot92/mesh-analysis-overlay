@@ -10,6 +10,8 @@ from .utils import (
     get_updated_bmesh_from_depsgraph,
     free_bmesh_if_owned,
     collect_enabled_features,
+    prof,
+    dump_profile,
 )
 
 # Kept for unregister cleanup / external compat; freshness is now driven by
@@ -96,6 +98,10 @@ def _push_gpu_results(obj, enabled_features, gpu_results) -> bool:
 
 @persistent
 def update_analysis_overlay(scene, depsgraph):
+    with prof("handlers.depsgraph"):
+        return _update_analysis_overlay_inner(scene, depsgraph)
+
+def _update_analysis_overlay_inner(scene, depsgraph):
     """Depsgraph callback.
 
     - EDIT mode: always re-analyze displayed objects (realtime guarantee,
@@ -215,6 +221,10 @@ def update_analysis_overlay(scene, depsgraph):
 
 
 def update_overlay_enabled_toggles(self, context):
+    with prof("handlers.toggle"):
+        return _update_overlay_enabled_toggles_inner(self, context)
+
+def _update_overlay_enabled_toggles_inner(self, context):
     """Callback for feature property toggles."""
     if not overlay_controller.is_running:
         return

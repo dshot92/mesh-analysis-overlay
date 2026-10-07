@@ -44,6 +44,30 @@ class MESH_ANALYSIS_OT_restore_preferences(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MESH_ANALYSIS_OT_dump_profile(bpy.types.Operator):
+    bl_idname = "mesh_analysis.dump_profile"
+    bl_label = "Dump Profile"
+    def execute(self, context):
+        try:
+            from .utils import prof_report
+            print(prof_report(reset=False))
+            self.report({'INFO'}, "Profile dumped to console")
+        except Exception as e:
+            self.report({'WARNING'}, f"Profile dump failed: {e}")
+        return {'FINISHED'}
+
+class MESH_ANALYSIS_OT_reset_profile(bpy.types.Operator):
+    bl_idname = "mesh_analysis.reset_profile"
+    bl_label = "Reset Profile"
+    def execute(self, context):
+        try:
+            from . import utils as _u
+            print(_u.prof_report(reset=True))
+            self.report({'INFO'}, "Profile reset")
+        except Exception as e:
+            self.report({'WARNING'}, f"Profile reset failed: {e}")
+        return {'FINISHED'}
+
 class Mesh_Analysis_Overlay(Operator):
     bl_idname = "view3d.mesh_analysis_overlay"
     bl_label = "Toggle Mesh Analysis Overlay"
@@ -169,6 +193,8 @@ class Select_Feature_Elements(bpy.types.Operator):
 
 classes = (
     MESH_ANALYSIS_OT_restore_preferences,
+    MESH_ANALYSIS_OT_dump_profile,
+    MESH_ANALYSIS_OT_reset_profile,
     Mesh_Analysis_Overlay,
     Select_Feature_Elements,
 )

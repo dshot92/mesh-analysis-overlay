@@ -109,6 +109,11 @@ class MeshAnalysisEngine:
         }
 
     def _get_triangulated_face_data(self, bm: bmesh.types.BMesh, face_indices: np.ndarray) -> np.ndarray:
+        from .utils import prof as _prof2
+        with _prof2("format.triangulate"):
+            return self._get_triangulated_face_data_inner(bm, face_indices)
+
+    def _get_triangulated_face_data_inner(self, bm: bmesh.types.BMesh, face_indices: np.ndarray) -> np.ndarray:
         """Get triangulated vertex indices for faces directly from BMesh.
 
         Same fan triangulation as before (convex assumption), but with a single
@@ -254,6 +259,14 @@ class MeshAnalysisEngine:
         self, obj: Object, features: Optional[List[str]] = None, bm: Optional[bmesh.types.BMesh] = None,
         threshold_deg: Optional[float] = None
     ) -> Dict[str, AnalysisResult]:
+        from .utils import prof as _prof3
+        with _prof3("analyze.mesh"):
+            return self._analyze_mesh_inner(obj, features, bm, threshold_deg)
+
+    def _analyze_mesh_inner(
+        self, obj: Object, features: Optional[List[str]] = None, bm: Optional[bmesh.types.BMesh] = None,
+        threshold_deg: Optional[float] = None
+    ) -> Dict[str, AnalysisResult]:
         """Analyze mesh for specified features - requires BMesh to be provided.
 
         Cache is version-aware: entries are valid only if parameters match AND
@@ -359,6 +372,14 @@ class MeshAnalysisEngine:
         self, obj: Object, features: Optional[List[str]] = None, feature_colors: Optional[Dict[str, tuple]] = None, bm: Optional[bmesh.types.BMesh] = None,
         threshold_deg: Optional[float] = None
     ) -> Dict[str, GPUFormattedData]:
+        from .utils import prof as _prof4
+        with _prof4("analyze.format"):
+            return self._analyze_and_format_inner(obj, features, feature_colors, bm, threshold_deg)
+
+    def _analyze_and_format_inner(
+        self, obj: Object, features: Optional[List[str]] = None, feature_colors: Optional[Dict[str, tuple]] = None, bm: Optional[bmesh.types.BMesh] = None,
+        threshold_deg: Optional[float] = None
+    ) -> Dict[str, GPUFormattedData]:
         """Analyze mesh and return GPU-ready formatted data using provided bmesh"""
         if not obj or obj.type != "MESH" or bm is None:
             return {}
@@ -385,6 +406,11 @@ class MeshAnalysisEngine:
         return gpu_results
 
     def _analyze_features_batch(self, bm: bmesh.types.BMesh, features: List[str], threshold_deg: Optional[float] = None) -> Dict[str, Optional[np.ndarray]]:
+        from .utils import prof as _prof
+        with _prof("analyze.batch"):
+            return self._analyze_features_batch_inner(bm, features, threshold_deg)
+
+    def _analyze_features_batch_inner(self, bm: bmesh.types.BMesh, features: List[str], threshold_deg: Optional[float] = None) -> Dict[str, Optional[np.ndarray]]:
         """Analyze multiple features in a single pass per element type.
 
         Verts scanned at most once, edges once, faces once — instead of once
