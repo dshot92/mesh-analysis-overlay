@@ -1,9 +1,8 @@
 import bpy
-import json
-import os
 from bpy.props import FloatVectorProperty, FloatProperty
 from bpy.types import AddonPreferences, Operator
 from .config_manager import config_manager
+from .utils import register_classes, unregister_classes
 
 def get_addon_name():
     """Get the correct addon name, handling both regular addons and extensions"""
@@ -41,48 +40,19 @@ class MESH_ANALYSIS_OT_reset_to_defaults(Operator):
     def execute(self, context):
         # 1. Restore factory defaults in the config manager
         config_manager.restore_factory_defaults()
-        
+
         # 2. Reload the addon preferences from the newly restored CONFIG_PREFERENCE.json
         # (which is now a copy of CONFIG_DEFAULT.json)
         config = config_manager.load_config(use_preferences=True)
-        
+
         addon_name = get_addon_name()
         prefs = context.preferences.addons[addon_name].preferences
-        
-        # Apply colors to preferences
-        colors = config.get("colors", {})
-        for feature_id, color in colors.items():
-            color_prop_name = f"{feature_id}_color"
-            if hasattr(prefs, color_prop_name):
-                setattr(prefs, color_prop_name, color)
-        
-        # Apply settings to preferences
-        settings = config.get("overlay_settings", {})
-        prefs.default_overlay_offset = settings.get("overlay_offset", 0.01)
-        prefs.default_overlay_vertex_radius = settings.get("overlay_vertex_radius", 5.0)
-        prefs.default_overlay_edge_width = settings.get("overlay_edge_width", 5.0)
-        prefs.default_non_planar_threshold = settings.get("non_planar_threshold", 0.0)
-        
+        config_manager.apply_config_to_preferences(prefs, config)
+
         # 3. Apply to current scene properties as well
         if hasattr(context.scene, 'Mesh_Analysis_Overlay_Properties'):
             props = context.scene.Mesh_Analysis_Overlay_Properties
-            
-            # Apply colors to scene props
-            for feature_id, color in colors.items():
-                # Note: properties.py might use slightly different IDs for color props if they have _color suffix
-                # We need to be careful with the mapping. 
-                # In properties.py, they are e.g. tri_faces_color
-                prop_name = f"{feature_id}_color"
-                if hasattr(props, prop_name):
-                    color_array = getattr(props, prop_name)
-                    for i in range(4):
-                        color_array[i] = color[i]
-            
-            # Apply settings to scene props
-            props.overlay_offset = settings.get("overlay_offset", 0.01)
-            props.overlay_vertex_radius = settings.get("overlay_vertex_radius", 5.0)
-            props.overlay_edge_width = settings.get("overlay_edge_width", 5.0)
-            props.non_planar_threshold = settings.get("non_planar_threshold", 0.0)
+            config_manager.apply_config_to_scene(props, config)
 
         self.report({'INFO'}, "Reset to factory defaults")
         return {'FINISHED'}
@@ -339,20 +309,8 @@ class MeshAnalysisOverlayPreferences(AddonPreferences):
 
 
 def register():
-    for _cls in (MESH_ANALYSIS_OT_reset_to_defaults, MeshAnalysisOverlayPreferences):
-        try:
-            try:
-                bpy.utils.unregister_class(_cls)
-            except Exception:
-                pass
-            bpy.utils.register_class(_cls)
-        except Exception as e:
-            print(f"[Mesh Analysis Overlay] preferences register failed {_cls}: {e}")
+    register_classes((MESH_ANALYSIS_OT_reset_to_defaults, MeshAnalysisOverlayPreferences))
 
 
 def unregister():
-    for _cls in (MESH_ANALYSIS_OT_reset_to_defaults, MeshAnalysisOverlayPreferences):
-        try:
-            bpy.utils.unregister_class(_cls)
-        except Exception:
-            pass
+    unregister_classes((MESH_ANALYSIS_OT_reset_to_defaults, MeshAnalysisOverlayPreferences))

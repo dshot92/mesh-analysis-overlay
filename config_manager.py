@@ -137,5 +137,35 @@ class ConfigManager:
         except Exception:
             return False
 
+    def apply_config_to_preferences(self, prefs, config):
+        """Apply colors + overlay_settings from config to AddonPreferences.
+
+        Single source for the prefs side of reset/restore flows.
+        """
+        try:
+            colors = config.get("colors", {})
+            for feature_id, color in colors.items():
+                prop_name = f"{feature_id}_color"
+                if hasattr(prefs, prop_name):
+                    try:
+                        setattr(prefs, prop_name, color)
+                    except Exception:
+                        pass
+            settings = config.get("overlay_settings", {})
+            for scene_key, pref_key in (
+                ("overlay_offset", "default_overlay_offset"),
+                ("overlay_vertex_radius", "default_overlay_vertex_radius"),
+                ("overlay_edge_width", "default_overlay_edge_width"),
+                ("non_planar_threshold", "default_non_planar_threshold"),
+            ):
+                if scene_key in settings and hasattr(prefs, pref_key):
+                    try:
+                        setattr(prefs, pref_key, settings[scene_key])
+                    except Exception:
+                        pass
+            return True
+        except Exception:
+            return False
+
 # Singleton instance
 config_manager = ConfigManager()

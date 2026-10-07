@@ -11,6 +11,7 @@ from enum import Enum
 
 from .config_manager import config_manager
 from .render_pipeline import PrimitiveType
+from .utils import GEOM_FEATURES as _GEOM_FEATURES
 
 
 class FeatureType(Enum):
@@ -41,10 +42,6 @@ class GPUFormattedData:
     primitive_type: PrimitiveType
 
 
-# Geometry-dependent features: classification changes on vertex moves
-# even when counts are identical. All others are topology-only.
-_GEOM_FEATURES = frozenset({"non_planar_faces", "degenerate_faces"})
-
 _EMPTY_3 = np.zeros((0, 3), dtype=np.float32)
 _EMPTY_4 = np.zeros((0, 4), dtype=np.float32)
 
@@ -54,7 +51,6 @@ class MeshAnalysisEngine:
 
     def __init__(self):
         self.cache: Dict[str, AnalysisResult] = {}
-        self.mesh_stats: Dict[str, Dict] = {}
         self.feature_types: Dict[str, FeatureType] = {}
 
         # Build feature type mapping from config manager metadata
@@ -86,15 +82,6 @@ class MeshAnalysisEngine:
 
         return params
 
-    def _empty_gpu_data(self, primitive_type: PrimitiveType = PrimitiveType.POINTS) -> GPUFormattedData:
-        """Shared empty GPU payload (avoids per-call allocations)."""
-        return GPUFormattedData(
-            vertices=_EMPTY_3,
-            normals=_EMPTY_3,
-            colors=_EMPTY_4,
-            primitive_type=primitive_type,
-        )
-
     def _get_mesh_data_from_bmesh(self, bm: bmesh.types.BMesh) -> Dict[str, np.ndarray]:
         """Extract mesh data from a bmesh (foreach_get fast path with fallback)."""
         # Local import to avoid cycles at module load time.
@@ -109,11 +96,6 @@ class MeshAnalysisEngine:
         }
 
     def _get_triangulated_face_data(self, bm: bmesh.types.BMesh, face_indices: np.ndarray,
-                                        timer_tag: Optional[str] = None) -> np.ndarray:
-        # Timed per-feature at the _format_gpu_data call site; passes timed below.
-        return self._get_triangulated_face_data_inner(bm, face_indices, timer_tag)
-
-    def _get_triangulated_face_data_inner(self, bm: bmesh.types.BMesh, face_indices: np.ndarray,
                                             timer_tag: Optional[str] = None) -> np.ndarray:
         """Get triangulated vertex indices for faces directly from BMesh.
 
@@ -575,26 +557,6 @@ class MeshAnalysisEngine:
 
         return results
 
-    def _analyze_vertex_features(
-        self, bm: bmesh.types.BMesh, feature: str
-    ) -> List[int]:
-        """Analyze vertex-based features (kept for compat; batch path preferred)."""
-        batch = self._analyze_features_batch(bm, [feature])
-        arr = batch.get(feature)
-        return arr.tolist() if arr is not None else []
-
-    def _analyze_edge_features(self, bm: bmesh.types.BMesh, feature: str) -> List[int]:
-        """Analyze edge-based features (kept for compat; batch path preferred)."""
-        batch = self._analyze_features_batch(bm, [feature])
-        arr = batch.get(feature)
-        return arr.tolist() if arr is not None else []
-
-    def _analyze_face_features(self, bm: bmesh.types.BMesh, feature: str) -> List[int]:
-        """Analyze face-based features (kept for compat; batch path preferred)."""
-        batch = self._analyze_features_batch(bm, [feature])
-        arr = batch.get(feature)
-        return arr.tolist() if arr is not None else []
-
     def _is_planar_fast(self, face: bmesh.types.BMFace, threshold_rad: float) -> bool:
         """Check if face is planar using pre-calculated threshold.
 
@@ -658,17 +620,8 @@ class MeshAnalysisEngine:
 
         return False
 
-    def _analyze_with_bmesh(self, bm: bmesh.types.BMesh, feature: str) -> List[int]:
-        """Analyze features using a BMesh (kept for compat)."""
-        batch = self._analyze_features_batch(bm, [feature])
-        arr = batch.get(feature)
-        return arr.tolist() if arr is not None else []
-
     def invalidate_cache(self, obj_name: str, features: Optional[List[str]] = None):
         """Invalidate cache for specific object and features"""
-        if obj_name in self.mesh_stats:
-            del self.mesh_stats[obj_name]
-
         if features is None:
             # Clear all features for this object
             keys_to_remove = [
@@ -690,36 +643,6 @@ class MeshAnalysisEngine:
         cache_key = f"{obj_name}:{feature}"
         return self.cache.get(cache_key)
 
-    def get_mesh_stats(self, obj: Object) -> Dict[str, int]:
-        """Get mesh statistics (O(1) fast path, no BMesh alloc)."""
-        obj_name = obj.name
-
-        if obj_name not in self.mesh_stats:
-            try:
-                data = getattr(obj, "data", None)
-                if data is not None and hasattr(data, "vertices") and hasattr(data, "polygons"):
-                    self.mesh_stats[obj_name] = {
-                        "verts": len(data.vertices),
-                        "edges": len(data.edges),
-                        "faces": len(data.polygons),
-                    }
-                else:
-                    bm = bmesh.new()
-                    try:
-                        bm.from_mesh(obj.data)
-                        self.mesh_stats[obj_name] = {
-                            "verts": len(bm.verts),
-                            "edges": len(bm.edges),
-                            "faces": len(bm.faces),
-                        }
-                    finally:
-                        bm.free()
-            except Exception:
-                self.mesh_stats[obj_name] = {"verts": 0, "edges": 0, "faces": 0}
-
-        return self.mesh_stats[obj_name]
-
     def clear_all_cache(self):
         """Clear all analysis cache"""
         self.cache.clear()
-        self.mesh_stats.clear()

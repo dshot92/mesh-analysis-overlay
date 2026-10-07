@@ -302,16 +302,6 @@ def prof_scope(label: str, min_ms: float = 5.0):
             pass
 
 
-def prof_scope_detail(text: str) -> None:
-    try:
-        text = str(text)[:200]
-        with _prof_lock:
-            if _scope_stack:
-                cur = _scope_stack[-1]["detail"]
-                _scope_stack[-1]["detail"] = ((cur + " " + text).strip())[:200]
-    except Exception:
-        pass
-
 def prof_report(reset: bool = False) -> str:
     try:
         with _prof_lock:
@@ -342,11 +332,64 @@ def prof_report(reset: bool = False) -> str:
             pass
     return out
 
-def dump_profile(reset: bool = False):
+# ---- Shared small helpers (single source for former duplicates) ----
+
+def arrays_equal(a, b) -> bool:
+    """True when two numpy arrays have identical shape + content.
+
+    Empty arrays compare equal regardless of dtype. Never raises.
+    Replaces former handlers._arrays_equal / overlay_controller._same_arrays.
+    """
     try:
-        print(prof_report(reset=reset))
+        if a is b:
+            return True
+        if getattr(a, "shape", None) != getattr(b, "shape", None):
+            return False
+        if getattr(a, "size", 0) == 0:
+            return True
+        return bool(np.array_equal(a, b))
+    except Exception:
+        return False
+
+
+def empty_f32() -> np.ndarray:
+    """Fresh empty float32 1-D array for clearing pipeline features."""
+    return np.zeros((0,), dtype=np.float32)
+
+
+def copy_rgba4(dst, src) -> None:
+    """Copy 4 float color channels with indexed assignment (Blender-safe)."""
+    try:
+        for i in range(4):
+            try:
+                dst[i] = float(src[i])
+            except Exception:
+                pass
     except Exception:
         pass
+
+
+def register_classes(classes) -> None:
+    """Teardown-first register shared by operators / panels / preferences."""
+    for _cls in classes:
+        try:
+            try:
+                bpy.utils.unregister_class(_cls)
+            except Exception:
+                pass
+            bpy.utils.register_class(_cls)
+        except Exception as e:
+            print(f"[Mesh Analysis Overlay] register failed {_cls}: {e}")
+
+
+def unregister_classes(classes) -> None:
+    """Unregister in reverse order. Never raises."""
+    for _cls in reversed(classes):
+        try:
+            bpy.utils.unregister_class(_cls)
+        except Exception:
+            pass
+
 
 # Features whose classification depends on vertex positions (not just topology).
 # All other features depend only on counts / connectivity / flags.
@@ -419,14 +462,6 @@ def free_bmesh_if_owned(obj: bpy.types.Object, bm) -> None:
         bm.free()
     except Exception:
         pass
-
-
-def get_bmesh_counts(bm) -> Tuple[int, int, int]:
-    """O(1) topology signature. Never reads vertex positions."""
-    try:
-        return (len(bm.verts), len(bm.edges), len(bm.faces))
-    except Exception:
-        return (0, 0, 0)
 
 
 def compute_bmesh_pos_hash(bm) -> int:
@@ -527,11 +562,23 @@ def extract_edge_vert_indices(bm) -> np.ndarray:
     return arr
 
 
-def collect_enabled_features(props, metadata) -> Tuple[List[str], Dict[str, tuple], List[str]]:
-    """Single place building (enabled_features, feature_colors, all_ids).
+def collect_enabled_by_category(props, metadata) -> Tuple[Dict[str, list], List[str]]:
+    """Active features grouped by category + flat id list. Single source for panels."""
+    active_by_category: Dict[str, list] = {}
+    all_active: List[str] = []
+    for _category, features in metadata.items():
+        try:
+            active = [f for f in features if getattr(props, f"{f['id']}_enabled", False)]
+        except Exception:
+            continue
+        if active:
+            active_by_category[_category] = active
+            all_active.extend(f["id"] for f in active)
+    return active_by_category, all_active
 
-    Deduplicates logic previously copied in overlay_controller / handlers / panels.
-    """
+
+def collect_enabled_features(props, metadata) -> Tuple[List[str], Dict[str, tuple], List[str]]:
+    """Single place building (enabled_features, feature_colors, all_ids)."""
     enabled: List[str] = []
     colors: Dict[str, tuple] = {}
     all_ids: List[str] = []
@@ -546,3 +593,20 @@ def collect_enabled_features(props, metadata) -> Tuple[List[str], Dict[str, tupl
             except Exception:
                 continue
     return enabled, colors, all_ids
+
+
+@contextmanager
+def managed_bmesh(obj, depsgraph):
+    """Yield bmesh from get_updated_bmesh_from_depsgraph, freeing if owned.
+
+    Yields None when depsgraph is None or acquisition fails (caller decides).
+    Never raises from the free path.
+    """
+    if depsgraph is None:
+        yield None
+        return
+    bm = get_updated_bmesh_from_depsgraph(obj, depsgraph)
+    try:
+        yield bm
+    finally:
+        free_bmesh_if_owned(obj, bm)

@@ -3,43 +3,27 @@
 import bpy
 import bmesh
 from bpy.types import Operator
-from bpy.props import StringProperty, EnumProperty
 
 from .overlay_controller import overlay_controller
 from .config_manager import config_manager
-from .utils import get_updated_bmesh_from_depsgraph
+from .utils import register_classes, unregister_classes
 from .analysis_engine import FeatureType
 
 class MESH_ANALYSIS_OT_restore_preferences(bpy.types.Operator):
     """Restore current scene properties from user preferences (reloads CONFIG_PREFERENCE.json)"""
     bl_idname = "mesh_analysis.restore_preferences"
     bl_label = "Restore Preferences"
-    
+
     def execute(self, context):
         if not hasattr(context.scene, 'Mesh_Analysis_Overlay_Properties'):
             return {'CANCELLED'}
-            
+
         props = context.scene.Mesh_Analysis_Overlay_Properties
-        
+
         # Reload current user preferences from CONFIG_PREFERENCE.json
         config = config_manager.load_config(use_preferences=True)
-        
-        # Apply colors to scene props
-        colors = config.get("colors", {})
-        for feature_id, color in colors.items():
-            prop_name = f"{feature_id}_color"
-            if hasattr(props, prop_name):
-                color_array = getattr(props, prop_name)
-                for i in range(4):
-                    color_array[i] = color[i]
-        
-        # Apply settings to scene props
-        settings = config.get("overlay_settings", {})
-        props.overlay_offset = settings.get("overlay_offset", 0.01)
-        props.overlay_vertex_radius = settings.get("overlay_vertex_radius", 5.0)
-        props.overlay_edge_width = settings.get("overlay_edge_width", 5.0)
-        props.non_planar_threshold = settings.get("non_planar_threshold", 0.0)
-        
+        config_manager.apply_config_to_scene(props, config)
+
         self.report({'INFO'}, "Restored from preferences")
         return {'FINISHED'}
 
@@ -174,40 +158,8 @@ classes = (
 )
 
 
-_LEGACY_OPS = (
-    "MESH_ANALYSIS_OT_dump_profile",
-    "MESH_ANALYSIS_OT_reset_profile",
-)
-
-
-def _unregister_legacy_ops():
-    """Best-effort removal of operator classes deleted from this module.
-
-    Only affects sessions that ran an intermediate local build registering
-    them; a Blender restart clears them regardless. Never raises.
-    """
-    for _name in _LEGACY_OPS:
-        try:
-            _cls = getattr(bpy.types, _name, None)
-            if _cls is not None:
-                try:
-                    bpy.utils.unregister_class(_cls)
-                except Exception:
-                    pass
-        except Exception:
-            continue
-
-
 def register():
-    for cls in classes:
-        try:
-            try:
-                bpy.utils.unregister_class(cls)
-            except Exception:
-                pass
-            bpy.utils.register_class(cls)
-        except Exception as e:
-            print(f"[Mesh Analysis Overlay] operator register failed {cls}: {e}")
+    register_classes(classes)
 
 
 def unregister():
@@ -217,9 +169,4 @@ def unregister():
     except Exception:
         pass
 
-    for cls in reversed(classes):
-        try:
-            bpy.utils.unregister_class(cls)
-        except Exception:
-            pass
-    _unregister_legacy_ops()
+    unregister_classes(classes)

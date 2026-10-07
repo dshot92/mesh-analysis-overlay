@@ -10,24 +10,8 @@ from bpy.props import (
 from bpy.types import PropertyGroup
 
 from . import handlers
-from .config_manager import config_manager
 from .preferences import get_addon_name
 
-def get_default_color(feature_name):
-    """Get default color from preferences or config"""
-    try:
-        # Try to get from addon preferences first
-        addon_name = get_addon_name()
-        prefs = bpy.context.preferences.addons[addon_name].preferences
-        color_attr = f"{feature_name}_color"
-        if hasattr(prefs, color_attr):
-            return getattr(prefs, color_attr)
-    except:
-        pass
-    
-    # Fallback to config file
-    config = config_manager.load_config(use_preferences=True)
-    return tuple(config.get("colors", {}).get(feature_name, [1.0, 0.0, 0.0, 0.5]))
 
 def update_profiling(self, context):
     """Single Profiling toggle: timers + direct console lines. No re-analysis."""
@@ -43,23 +27,6 @@ def update_profiling(self, context):
                 pass
     except Exception:
         pass
-
-
-def get_default_overlay_setting(setting_name):
-    """Get default overlay setting from preferences or config"""
-    try:
-        # Try to get from addon preferences first
-        addon_name = get_addon_name()
-        prefs = bpy.context.preferences.addons[addon_name].preferences
-        pref_attr = f"default_{setting_name}"
-        if hasattr(prefs, pref_attr):
-            return getattr(prefs, pref_attr)
-    except:
-        pass
-    
-    # Fallback to config file
-    config = config_manager.load_config(use_preferences=True)
-    return config.get("overlay_settings", {}).get(setting_name, 0.01)
 
 
 class Mesh_Analysis_Overlay_Props(PropertyGroup):
@@ -334,6 +301,8 @@ class Mesh_Analysis_Overlay_Props(PropertyGroup):
 
 
 def apply_preference_defaults(context):
+    from .utils import copy_rgba4
+
     props = context.scene.Mesh_Analysis_Overlay_Properties
     try:
         addon_name = get_addon_name()
@@ -358,8 +327,7 @@ def apply_preference_defaults(context):
         ]
 
         for prop_array, pref_color in color_mappings:
-            for i in range(4):
-                prop_array[i] = pref_color[i]
+            copy_rgba4(prop_array, pref_color)
 
         # Apply overlay setting defaults
         props.overlay_offset = prefs.default_overlay_offset
@@ -383,11 +351,6 @@ def _load_handler(dummy):
                 apply_preference_defaults(context)
         except Exception:
             pass
-
-
-# Back-compat alias (old nested name).
-def load_handler(dummy):
-    return _load_handler(dummy)
 
 
 def register():

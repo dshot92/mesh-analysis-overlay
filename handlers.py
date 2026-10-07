@@ -1,5 +1,4 @@
 import bpy
-import numpy as np
 
 from bpy.app.handlers import persistent
 from .overlay_controller import overlay_controller
@@ -7,92 +6,21 @@ from .panels import Mesh_Analysis_Overlay_Panel
 from .config_manager import config_manager
 from .render_pipeline import PrimitiveType
 from .utils import (
-    get_updated_bmesh_from_depsgraph,
-    free_bmesh_if_owned,
+    managed_bmesh,
+    empty_f32,
     collect_enabled_features,
     prof_scope,
 )
-
-# Kept for unregister cleanup / external compat; freshness is now driven by
-# engine versioning + explicit edit-mode forcing (see below).
-_last_topo: dict = {}
-_last_pos_hash: dict = {}
-_last_enabled_key: dict = {}
-_last_threshold: dict = {}
-_last_time: dict = {}
-
-
-def _arrays_equal(a, b) -> bool:
-    try:
-        if a is b:
-            return True
-        if getattr(a, "shape", None) != getattr(b, "shape", None):
-            return False
-        if getattr(a, "size", 0) == 0:
-            return True
-        return bool(np.array_equal(a, b))
-    except Exception:
-        return False
 
 
 def _push_gpu_results(obj, enabled_features, gpu_results) -> bool:
     """Push analysis results, skipping identical content.
 
+    Single source is OverlayController.push_gpu_results; kept as thin wrapper
+    for existing call sites.
     Returns True when the pipeline was modified (needs redraw).
     """
-    rp = overlay_controller.render_pipeline
-    try:
-        present = rp.render_data.get(obj.name, {}) or {}
-    except Exception:
-        present = {}
-    initial = dict(present)
-    changed = False
-    for f_id in enabled_features:
-        if f_id in gpu_results:
-            gpu_data = gpu_results[f_id]
-            try:
-                is_empty = len(gpu_data.vertices) == 0
-            except Exception:
-                is_empty = True
-            if is_empty:
-                if f_id in initial:
-                    rp.update_feature_data(
-                        obj.name, f_id,
-                        np.zeros((0,), dtype=np.float32),
-                        np.zeros((0,), dtype=np.float32),
-                        np.zeros((0,), dtype=np.float32),
-                        PrimitiveType.POINTS,
-                    )
-                    changed = True
-                continue
-            old = initial.get(f_id)
-            if old is not None:
-                try:
-                    if (
-                        _arrays_equal(old.vertices, gpu_data.vertices)
-                        and _arrays_equal(old.normals, gpu_data.normals)
-                        and _arrays_equal(old.colors, gpu_data.colors)
-                        and old.primitive_type == gpu_data.primitive_type
-                    ):
-                        continue
-                except Exception:
-                    pass
-            rp.update_feature_data(
-                obj.name, f_id, gpu_data.vertices, gpu_data.normals, gpu_data.colors, gpu_data.primitive_type
-            )
-            changed = True
-        else:
-            if f_id in initial:
-                rp.update_feature_data(
-                    obj.name,
-                    f_id,
-                    np.zeros((0,), dtype=np.float32),
-                    np.zeros((0,), dtype=np.float32),
-                    np.zeros((0,), dtype=np.float32),
-                    PrimitiveType.POINTS,
-                )
-                changed = True
-    return changed
+    return overlay_controller.push_gpu_results(obj.name, enabled_features, gpu_results)
 
 
 @persistent
@@ -182,9 +110,9 @@ def _update_analysis_overlay_inner(scene, depsgraph):
                     for f_id in list(present.keys()):
                         overlay_controller.render_pipeline.update_feature_data(
                             obj.name, f_id,
-                            np.zeros((0,), dtype=np.float32),
-                            np.zeros((0,), dtype=np.float32),
-                            np.zeros((0,), dtype=np.float32),
+                            empty_f32(),
+                            empty_f32(),
+                            empty_f32(),
                             PrimitiveType.POINTS,
                         )
                     updated_any = True
@@ -192,26 +120,23 @@ def _update_analysis_overlay_inner(scene, depsgraph):
                 pass
             continue
         try:
-            bm = get_updated_bmesh_from_depsgraph(obj, depsgraph)
-        except Exception:
-            continue
-        try:
-            # EDIT: force fresh classification for realtime (undo/select/move).
-            # OBJECT: rely on version-aware engine cache (no-op when fresh).
-            try:
-                if obj.mode == "EDIT":
-                    overlay_controller.analysis_engine.invalidate_cache(obj.name)
-            except Exception:
-                pass
-            gpu_results = overlay_controller.analysis_engine.analyze_and_format_mesh_with_bmesh(
-                obj, enabled_features, feature_colors, bm
-            )
-            if _push_gpu_results(obj, enabled_features, gpu_results):
-                updated_any = True
+            with managed_bmesh(obj, depsgraph) as bm:
+                if bm is None:
+                    continue
+                # EDIT: force fresh classification for realtime (undo/select/move).
+                # OBJECT: rely on version-aware engine cache (no-op when fresh).
+                try:
+                    if obj.mode == "EDIT":
+                        overlay_controller.analysis_engine.invalidate_cache(obj.name)
+                except Exception:
+                    pass
+                gpu_results = overlay_controller.analysis_engine.analyze_and_format_mesh_with_bmesh(
+                    obj, enabled_features, feature_colors, bm
+                )
+                if _push_gpu_results(obj, enabled_features, gpu_results):
+                    updated_any = True
         except Exception:
             pass
-        finally:
-            free_bmesh_if_owned(obj, bm)
 
     if updated_any or selection_changed:
         if updated_any:
@@ -362,8 +287,3 @@ def register():
 def unregister():
     if update_analysis_overlay in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(update_analysis_overlay)
-    _last_topo.clear()
-    _last_pos_hash.clear()
-    _last_enabled_key.clear()
-    _last_threshold.clear()
-    _last_time.clear()

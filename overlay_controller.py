@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import bpy
-import numpy as np
 from typing import Dict, Set, List, Optional
 from bpy.types import Object
 
@@ -9,8 +8,9 @@ from .analysis_engine import MeshAnalysisEngine
 from .render_pipeline import RenderPipeline, PrimitiveType
 from .config_manager import config_manager
 from .utils import (
-    get_updated_bmesh_from_depsgraph,
-    free_bmesh_if_owned,
+    managed_bmesh,
+    arrays_equal,
+    empty_f32,
     collect_enabled_features,
     note_overlay_start,
     note_overlay_stop,
@@ -26,19 +26,6 @@ def _clear_panel_stats_cache():
         Mesh_Analysis_Overlay_Panel.clear_stats_cache()
     except Exception:
         pass
-
-
-def _same_arrays(a, b) -> bool:
-    try:
-        if a is b:
-            return True
-        if a.shape != b.shape:
-            return False
-        if a.size == 0:
-            return True
-        return bool(np.array_equal(a, b))
-    except Exception:
-        return False
 
 
 class OverlayController:
@@ -141,9 +128,9 @@ class OverlayController:
             if f_id in present:
                 self.render_pipeline.update_feature_data(
                     obj_name, f_id,
-                    np.zeros((0,), dtype=np.float32),
-                    np.zeros((0,), dtype=np.float32),
-                    np.zeros((0,), dtype=np.float32),
+                    empty_f32(),
+                    empty_f32(),
+                    empty_f32(),
                     PrimitiveType.POINTS,
                 )
                 return True
@@ -152,9 +139,9 @@ class OverlayController:
         if old is not None:
             try:
                 if (
-                    _same_arrays(old.vertices, gpu_data.vertices)
-                    and _same_arrays(old.normals, gpu_data.normals)
-                    and _same_arrays(old.colors, gpu_data.colors)
+                    arrays_equal(old.vertices, gpu_data.vertices)
+                    and arrays_equal(old.normals, gpu_data.normals)
+                    and arrays_equal(old.colors, gpu_data.colors)
                     and old.primitive_type == gpu_data.primitive_type
                 ):
                     return False
@@ -165,6 +152,33 @@ class OverlayController:
             gpu_data.primitive_type,
         )
         return True
+
+    def push_gpu_results(self, obj_name: str, enabled_features: List[str], gpu_results: dict) -> bool:
+        """Batch push shared by controller and depsgraph handler (single source).
+
+        Skips identical content; clears features missing from gpu_results.
+        Returns True when the pipeline was modified.
+        """
+        try:
+            present = self.render_pipeline.render_data.get(obj_name, {}) or {}
+        except Exception:
+            present = {}
+        initial = dict(present)
+        changed = False
+        for f_id in enabled_features:
+            if f_id in gpu_results:
+                if self._push_if_changed(obj_name, f_id, gpu_results[f_id], initial):
+                    changed = True
+            elif f_id in initial:
+                try:
+                    self.render_pipeline.update_feature_data(
+                        obj_name, f_id, empty_f32(), empty_f32(), empty_f32(),
+                        PrimitiveType.POINTS,
+                    )
+                    changed = True
+                except Exception:
+                    pass
+        return changed
 
     def update_overlay(self, obj: Object):
         with prof_scope("overlay"):
@@ -192,9 +206,9 @@ class OverlayController:
                     self.render_pipeline.update_feature_data(
                         obj.name,
                         f_id,
-                        np.zeros((0,), dtype=np.float32),
-                        np.zeros((0,), dtype=np.float32),
-                        np.zeros((0,), dtype=np.float32),
+                        empty_f32(),
+                        empty_f32(),
+                        empty_f32(),
                         PrimitiveType.POINTS,
                     )
         except Exception:
@@ -209,37 +223,31 @@ class OverlayController:
         except Exception:
             return
         try:
-            bm = get_updated_bmesh_from_depsgraph(obj, depsgraph)
-        except Exception:
-            return
+            with managed_bmesh(obj, depsgraph) as bm:
+                if bm is None:
+                    return
+                # Get GPU-ready data from analysis engine with the pre-created bmesh
+                gpu_results = self.analysis_engine.analyze_and_format_mesh_with_bmesh(
+                    obj, enabled_features, feature_colors, bm
+                )
 
-        try:
-            # Get GPU-ready data from analysis engine with the pre-created bmesh
-            gpu_results = self.analysis_engine.analyze_and_format_mesh_with_bmesh(
-                obj, enabled_features, feature_colors, bm
-            )
-
-            present_after = self.render_pipeline.render_data.get(obj.name, {}) or {}
-            initial_present = dict(present_after)
-            for f_id in enabled_features:
-                if f_id in gpu_results:
-                    self._push_if_changed(obj.name, f_id, gpu_results[f_id], initial_present)
-                else:
-                    if f_id in initial_present:
+                present_after = self.render_pipeline.render_data.get(obj.name, {}) or {}
+                initial_present = dict(present_after)
+                for f_id in enabled_features:
+                    if f_id in gpu_results:
+                        self._push_if_changed(obj.name, f_id, gpu_results[f_id], initial_present)
+                    elif f_id in initial_present:
                         self.render_pipeline.update_feature_data(
                             obj.name,
                             f_id,
-                            np.zeros((0,), dtype=np.float32),
-                            np.zeros((0,), dtype=np.float32),
-                            np.zeros((0,), dtype=np.float32),
+                            empty_f32(),
+                            empty_f32(),
+                            empty_f32(),
                             PrimitiveType.POINTS,
                         )
-        finally:
-            free_bmesh_if_owned(obj, bm)
+        except Exception:
+            return
 
-
-    def get_mesh_stats(self, obj: Object) -> Dict[str, int]:
-        return self.analysis_engine.get_mesh_stats(obj)
 
     def get_feature_counts(self, obj: Object, features: Optional[List[str]] = None) -> Dict[str, int]:
         """Return element counts per feature (uses cache, single BMesh on miss)."""
@@ -267,36 +275,31 @@ class OverlayController:
             else:
                 missing.append(f_id)
         if missing:
-            bm = None
             try:
                 depsgraph = bpy.context.evaluated_depsgraph_get()
             except Exception:
                 depsgraph = None
             try:
-                if depsgraph is not None:
-                    bm = get_updated_bmesh_from_depsgraph(obj, depsgraph)
-                if bm is not None:
-                    res = self.analysis_engine.analyze_mesh(obj, missing, bm)
-                    for f_id in missing:
-                        r = res.get(f_id)
-                        if r is not None:
-                            try:
-                                counts[f_id] = len(r.indices)
-                            except Exception:
-                                counts[f_id] = 0
-                        else:
-                            cached = self.analysis_engine.get_cached_result(obj.name, f_id)
-                            counts[f_id] = len(cached.indices) if cached is not None else 0
-                else:
-                    for f_id in missing:
-                        counts[f_id] = 0
+                with managed_bmesh(obj, depsgraph) as bm:
+                    if bm is not None:
+                        res = self.analysis_engine.analyze_mesh(obj, missing, bm)
+                        for f_id in missing:
+                            r = res.get(f_id)
+                            if r is not None:
+                                try:
+                                    counts[f_id] = len(r.indices)
+                                except Exception:
+                                    counts[f_id] = 0
+                            else:
+                                cached = self.analysis_engine.get_cached_result(obj.name, f_id)
+                                counts[f_id] = len(cached.indices) if cached is not None else 0
+                    else:
+                        for f_id in missing:
+                            counts[f_id] = 0
             except Exception:
                 for f_id in missing:
                     if f_id not in counts:
                         counts[f_id] = 0
-            finally:
-                if bm is not None:
-                    free_bmesh_if_owned(obj, bm)
         return counts
 
     def clear_all_cache(self):

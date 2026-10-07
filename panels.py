@@ -5,7 +5,7 @@ from typing import Dict
 
 from .overlay_controller import overlay_controller
 from .config_manager import config_manager
-from .utils import get_updated_bmesh_from_depsgraph, free_bmesh_if_owned
+from .utils import collect_enabled_by_category, register_classes, unregister_classes
 
 
 class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
@@ -79,9 +79,9 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
     def draw_statistics(self, context, panel):
         """Draw statistics for all selected mesh objects.
 
-        Reuses engine cache first; allocates at most one BMesh per object and
-        only when some active feature is missing from cache. This avoids the
-        previous per-category BMesh + full re-analysis on every UI redraw.
+        Uses OverlayController.get_feature_counts (engine cache + single BMesh
+        on miss) grouped by category. Panel-level _stats_cache avoids recompute
+        on every UI redraw.
         """
         if not overlay_controller.is_running:
             panel.label(text="Enable overlay to see statistics")
@@ -101,7 +101,6 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             props = context.scene.Mesh_Analysis_Overlay_Properties
         except Exception:
             return
-        analysis_engine = overlay_controller.analysis_engine
 
         try:
             metadata = config_manager.get_metadata()
@@ -113,17 +112,7 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             # Done before the cache check so the cache key reflects the
             # current toggle set: toggling a feature must recompute even
             # when the object selection did not change.
-            active_by_category = {}
-            all_active = []
-            for category, features in metadata.items():
-                active = [
-                    feature["id"]
-                    for feature in features
-                    if getattr(props, f"{feature['id']}_enabled", False)
-                ]
-                if active:
-                    active_by_category[category] = [f for f in features if f["id"] in active]
-                    all_active.extend(active)
+            active_by_category, all_active = collect_enabled_by_category(props, metadata)
 
             try:
                 threshold = float(getattr(props, "non_planar_threshold", 0.0))
@@ -138,63 +127,15 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
                 stats: Dict = {"features": {}, "_key": cache_key}
 
                 if all_active:
-                    # Fast path: all counts already cached (steady state, no BMesh).
-                    missing = [
-                        fid for fid in all_active
-                        if analysis_engine.get_cached_result(obj.name, fid) is None
-                    ]
-                    # Note: missing from cache may also mean "zero hits" (engine
-                    # only caches non-empty). Fall through to one analysis to
-                    # distinguish zero vs stale.
-                    if not missing:
-                        for category, features in active_by_category.items():
-                            stats["features"][category.title()] = {
-                                feature["label"]: len(
-                                    analysis_engine.get_cached_result(obj.name, feature["id"]).indices
-                                )
-                                for feature in features
-                            }
-                    else:
-                        # Single BMesh + single batched analysis per object.
-                        try:
-                            depsgraph = bpy.context.evaluated_depsgraph_get()
-                        except Exception:
-                            depsgraph = None
-                        bm = None
-                        try:
-                            if depsgraph is not None:
-                                bm = get_updated_bmesh_from_depsgraph(obj, depsgraph)
-                            if bm is not None:
-                                analysis_results = analysis_engine.analyze_mesh(
-                                    obj, all_active, bm
-                                )
-                            else:
-                                analysis_results = {}
-                        except Exception:
-                            analysis_results = {}
-                        finally:
-                            if bm is not None:
-                                free_bmesh_if_owned(obj, bm)
-                        for category, features in active_by_category.items():
-                            cat_stats = {}
-                            for feature in features:
-                                res = analysis_results.get(feature["id"])
-                                if res is not None:
-                                    try:
-                                        cat_stats[feature["label"]] = len(res.indices)
-                                    except Exception:
-                                        cat_stats[feature["label"]] = 0
-                                else:
-                                    # Check cache (may have been fresh without re-analysis)
-                                    engine_cached = analysis_engine.get_cached_result(obj.name, feature["id"])
-                                    if engine_cached is not None:
-                                        try:
-                                            cat_stats[feature["label"]] = len(engine_cached.indices)
-                                        except Exception:
-                                            cat_stats[feature["label"]] = 0
-                                    else:
-                                        cat_stats[feature["label"]] = 0
-                            stats["features"][category.title()] = cat_stats
+                    counts = overlay_controller.get_feature_counts(obj, all_active)
+                    for category, features in active_by_category.items():
+                        cat_stats = {}
+                        for feature in features:
+                            try:
+                                cat_stats[feature["label"]] = int(counts.get(feature["id"], 0))
+                            except Exception:
+                                cat_stats[feature["label"]] = 0
+                        stats["features"][category.title()] = cat_stats
 
                 self._stats_cache[obj.name] = stats
 
@@ -224,20 +165,8 @@ classes = (Mesh_Analysis_Overlay_Panel,)
 
 
 def register():
-    for bl_class in classes:
-        try:
-            try:
-                bpy.utils.unregister_class(bl_class)
-            except Exception:
-                pass
-            bpy.utils.register_class(bl_class)
-        except Exception as e:
-            print(f"[Mesh Analysis Overlay] panel register failed {bl_class}: {e}")
+    register_classes(classes)
 
 
 def unregister():
-    for bl_class in reversed(classes):
-        try:
-            bpy.utils.unregister_class(bl_class)
-        except Exception:
-            pass
+    unregister_classes(classes)
