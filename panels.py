@@ -72,14 +72,9 @@ class Mesh_Analysis_Overlay_Panel(bpy.types.Panel):
             panel.prop(props, "non_planar_threshold", text="Non-Planar Threshold")
 
             # Reset to preferences (CONFIG_PREFERENCE.json)
+            panel.prop(props, "profiling", text="Profiling", toggle=True)
             row = panel.row()
             row.operator("mesh_analysis.restore_preferences", text="Restore Preferences", icon="LOOP_BACK")
-
-        # Profiling (timers)
-        header, panel = layout.panel("profiling_panel", default_closed=True)
-        header.label(text="Profiling")
-        if panel:
-            panel.prop(props, "profiling", text="Profiling", toggle=True)
 
     def draw_statistics(self, context, panel):
         """Draw statistics for all selected mesh objects.
