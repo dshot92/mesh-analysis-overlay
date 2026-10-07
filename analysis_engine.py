@@ -108,12 +108,13 @@ class MeshAnalysisEngine:
             "edge_v_indices": edge_v_indices,
         }
 
-    def _get_triangulated_face_data(self, bm: bmesh.types.BMesh, face_indices: np.ndarray) -> np.ndarray:
-        from .utils import prof as _prof2
-        with _prof2("format.triangulate"):
-            return self._get_triangulated_face_data_inner(bm, face_indices)
+    def _get_triangulated_face_data(self, bm: bmesh.types.BMesh, face_indices: np.ndarray,
+                                        timer_tag: Optional[str] = None) -> np.ndarray:
+        # Timed per-feature at the _format_gpu_data call site; passes timed below.
+        return self._get_triangulated_face_data_inner(bm, face_indices, timer_tag)
 
-    def _get_triangulated_face_data_inner(self, bm: bmesh.types.BMesh, face_indices: np.ndarray) -> np.ndarray:
+    def _get_triangulated_face_data_inner(self, bm: bmesh.types.BMesh, face_indices: np.ndarray,
+                                            timer_tag: Optional[str] = None) -> np.ndarray:
         """Get triangulated vertex indices for faces directly from BMesh.
 
         Same fan triangulation as before (convex assumption), but with a single
@@ -128,40 +129,44 @@ class MeshAnalysisEngine:
 
         # First pass: total triangle count for preallocation.
         # Filter out-of-range indices (stale cache safety).
+        from .utils import prof as _profT
+        _tri_base = f"format.{timer_tag}.triangulate" if timer_tag else "format.triangulate"
         valid = []
         total_tris = 0
-        for face_idx in face_indices:
-            try:
-                fi = int(face_idx)
-            except Exception:
-                continue
-            if 0 <= fi < n_faces:
+        with _profT(_tri_base + ".count"):
+            for face_idx in face_indices:
                 try:
-                    nv = len(bm.faces[fi].verts)
+                    fi = int(face_idx)
                 except Exception:
                     continue
-                if nv >= 3:
-                    valid.append(fi)
-                    total_tris += nv - 2
+                if 0 <= fi < n_faces:
+                    try:
+                        nv = len(bm.faces[fi].verts)
+                    except Exception:
+                        continue
+                    if nv >= 3:
+                        valid.append(fi)
+                        total_tris += nv - 2
         if total_tris == 0:
             return np.zeros((0,), dtype=np.int32)
 
-        out = np.empty(total_tris * 3, dtype=np.int32)
-        pos = 0
-        for fi in valid:
-            try:
-                verts = bm.faces[fi].verts
-            except Exception:
-                continue
-            if len(verts) < 3:
-                continue
-            v0 = verts[0].index
-            # Fan: (v0, vi, vi+1)
-            for i in range(1, len(verts) - 1):
-                out[pos] = v0
-                out[pos + 1] = verts[i].index
-                out[pos + 2] = verts[i + 1].index
-                pos += 3
+        with _profT(_tri_base + ".fan"):
+            out = np.empty(total_tris * 3, dtype=np.int32)
+            pos = 0
+            for fi in valid:
+                try:
+                    verts = bm.faces[fi].verts
+                except Exception:
+                    continue
+                if len(verts) < 3:
+                    continue
+                v0 = verts[0].index
+                # Fan: (v0, vi, vi+1)
+                for i in range(1, len(verts) - 1):
+                    out[pos] = v0
+                    out[pos + 1] = verts[i].index
+                    out[pos + 2] = verts[i + 1].index
+                    pos += 3
         if pos != len(out):
             out = out[:pos]
         return out
@@ -209,7 +214,10 @@ class MeshAnalysisEngine:
         elif result.feature_type == FeatureType.FACE:
             # For faces, use direct triangulation from BMesh
             if bm is not None:
-                tri_v_indices = self._get_triangulated_face_data(bm, result.indices)
+                from .utils import prof as _profG
+                with _profG(f"format.{result.feature}.triangulate"):
+                    tri_v_indices = self._get_triangulated_face_data(
+                        bm, result.indices, timer_tag=str(result.feature))
 
                 if len(tri_v_indices) == 0:
                     vertices = np.array([], dtype=np.float32).reshape(0, 3)
@@ -287,8 +295,12 @@ class MeshAnalysisEngine:
             features = [f for f in features if f in self.feature_types]
         if not features:
             return {}
-
         topo_sig = self._current_topo_sig(bm)
+        try:
+            from .utils import prof_features as _pff
+            _pff(features, getattr(obj, "name", None), getattr(obj, "mode", None), topo_sig)
+        except Exception:
+            pass
 
         results = {}
         uncached_features: List[str] = []
@@ -335,6 +347,13 @@ class MeshAnalysisEngine:
                 uncached_features.append(feature)
                 continue
             results[feature] = cached_result
+        try:
+            from .utils import prof_event as _pev
+            _hits = [f for f in features if f not in uncached_features]
+            _pev(f"{obj_name}[{getattr(obj, 'mode', '?')}] cache hits(n={len(_hits)}): {', '.join(sorted(_hits)) if _hits else '-'} "
+                f"misses(n={len(uncached_features)}): {', '.join(sorted(uncached_features)) if uncached_features else '-'}")
+        except Exception:
+            pass
 
         # Analyze all uncached features with the provided BMesh (single pass)
         if uncached_features:
@@ -393,6 +412,7 @@ class MeshAnalysisEngine:
         analysis_results = self.analyze_mesh(obj, features, bm, threshold_deg)
 
         # Convert to GPU formatted data
+        from .utils import prof as _profF
         gpu_results = {}
         for feature_id, result in analysis_results.items():
             if feature_colors:
@@ -400,7 +420,8 @@ class MeshAnalysisEngine:
             else:
                 color = (1.0, 0.0, 0.0, 1.0)  # Default red
 
-            gpu_data = self._format_gpu_data(result, color, mesh_data, bm)
+            with _profF(f"format.{feature_id}"):
+                gpu_data = self._format_gpu_data(result, color, mesh_data, bm)
             gpu_results[feature_id] = gpu_data
 
         return gpu_results
@@ -418,6 +439,7 @@ class MeshAnalysisEngine:
         threshold_deg is in degrees (matches scene property); None reads it
         from the current scene for compat.
         """
+        from .utils import prof as _profB
         results: Dict[str, Optional[np.ndarray]] = {}
         try:
             vert_feats = [f for f in features if self.feature_types.get(f) == FeatureType.VERTEX]
@@ -426,108 +448,118 @@ class MeshAnalysisEngine:
 
             buffers: Dict[str, list] = {f: [] for f in features}
 
-            if vert_feats:
-                want_single = "single_vertices" in vert_feats
-                want_nmanv = "non_manifold_v_vertices" in vert_feats
-                want_n = "n_pole_vertices" in vert_feats
-                want_e = "e_pole_vertices" in vert_feats
-                want_h = "high_pole_vertices" in vert_feats
-                for v in bm.verts:
-                    try:
-                        n_edges = len(v.link_edges)
-                    except Exception:
-                        continue
-                    idx = v.index
-                    if want_single and n_edges == 0:
-                        buffers["single_vertices"].append(idx)
-                    if want_nmanv:
+            with _profB("analyze.verts"):
+                if vert_feats:
+                    want_single = "single_vertices" in vert_feats
+                    want_nmanv = "non_manifold_v_vertices" in vert_feats
+                    want_n = "n_pole_vertices" in vert_feats
+                    want_e = "e_pole_vertices" in vert_feats
+                    want_h = "high_pole_vertices" in vert_feats
+                    for v in bm.verts:
                         try:
-                            if not v.is_manifold:
-                                buffers["non_manifold_v_vertices"].append(idx)
+                            n_edges = len(v.link_edges)
                         except Exception:
-                            pass
-                    if want_n and n_edges == 3:
-                        buffers["n_pole_vertices"].append(idx)
-                    if want_e and n_edges == 5:
-                        buffers["e_pole_vertices"].append(idx)
-                    if want_h and n_edges >= 6:
-                        buffers["high_pole_vertices"].append(idx)
+                            continue
+                        idx = v.index
+                        if want_single and n_edges == 0:
+                            buffers["single_vertices"].append(idx)
+                        if want_nmanv:
+                            try:
+                                if not v.is_manifold:
+                                    buffers["non_manifold_v_vertices"].append(idx)
+                            except Exception:
+                                pass
+                        if want_n and n_edges == 3:
+                            buffers["n_pole_vertices"].append(idx)
+                        if want_e and n_edges == 5:
+                            buffers["e_pole_vertices"].append(idx)
+                        if want_h and n_edges >= 6:
+                            buffers["high_pole_vertices"].append(idx)
 
-            if edge_feats:
-                want_nman = "non_manifold_e_edges" in edge_feats
-                want_sharp = "sharp_edges" in edge_feats
-                want_seam = "seam_edges" in edge_feats
-                want_bnd = "boundary_edges" in edge_feats
-                for e in bm.edges:
-                    idx = e.index
-                    if want_nman:
-                        try:
-                            if not e.is_manifold:
-                                buffers["non_manifold_e_edges"].append(idx)
-                        except Exception:
-                            pass
-                    if want_sharp:
-                        try:
-                            if not e.smooth:
-                                buffers["sharp_edges"].append(idx)
-                        except Exception:
-                            pass
-                    if want_seam:
-                        try:
-                            if e.seam:
-                                buffers["seam_edges"].append(idx)
-                        except Exception:
-                            pass
-                    if want_bnd:
-                        try:
-                            if e.is_boundary:
-                                buffers["boundary_edges"].append(idx)
-                        except Exception:
-                            pass
+            with _profB("analyze.edges"):
+                if edge_feats:
+                    want_nman = "non_manifold_e_edges" in edge_feats
+                    want_sharp = "sharp_edges" in edge_feats
+                    want_seam = "seam_edges" in edge_feats
+                    want_bnd = "boundary_edges" in edge_feats
+                    for e in bm.edges:
+                        idx = e.index
+                        if want_nman:
+                            try:
+                                if not e.is_manifold:
+                                    buffers["non_manifold_e_edges"].append(idx)
+                            except Exception:
+                                pass
+                        if want_sharp:
+                            try:
+                                if not e.smooth:
+                                    buffers["sharp_edges"].append(idx)
+                            except Exception:
+                                pass
+                        if want_seam:
+                            try:
+                                if e.seam:
+                                    buffers["seam_edges"].append(idx)
+                            except Exception:
+                                pass
+                        if want_bnd:
+                            try:
+                                if e.is_boundary:
+                                    buffers["boundary_edges"].append(idx)
+                            except Exception:
+                                pass
 
-            if face_feats:
-                want_tri = "tri_faces" in face_feats
-                want_quad = "quad_faces" in face_feats
-                want_ngon = "ngon_faces" in face_feats
-                want_nonplanar = "non_planar_faces" in face_feats
-                want_degen = "degenerate_faces" in face_feats
-                threshold_rad = 0.0
-                if want_nonplanar:
-                    if threshold_deg is not None:
-                        try:
-                            threshold_rad = float(np.radians(float(threshold_deg)))
-                        except Exception:
-                            threshold_rad = 0.0
-                    else:
-                        try:
-                            props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
-                            threshold_rad = float(np.radians(props.non_planar_threshold))
-                        except Exception:
-                            threshold_rad = 0.0
-                for f in bm.faces:
-                    try:
-                        nv = len(f.verts)
-                    except Exception:
-                        continue
-                    idx = f.index
-                    if want_tri and nv == 3:
-                        buffers["tri_faces"].append(idx)
-                    if want_quad and nv == 4:
-                        buffers["quad_faces"].append(idx)
-                    if want_ngon and nv > 4:
-                        buffers["ngon_faces"].append(idx)
+            with _profB("analyze.faces"):
+                if face_feats:
+                    want_tri = "tri_faces" in face_feats
+                    want_quad = "quad_faces" in face_feats
+                    want_ngon = "ngon_faces" in face_feats
+                    want_nonplanar = "non_planar_faces" in face_feats
+                    want_degen = "degenerate_faces" in face_feats
+                    threshold_rad = 0.0
                     if want_nonplanar:
-                        try:
-                            if not self._is_planar_fast(f, threshold_rad):
-                                buffers["non_planar_faces"].append(idx)
-                        except Exception:
-                            pass
+                        if threshold_deg is not None:
+                            try:
+                                threshold_rad = float(np.radians(float(threshold_deg)))
+                            except Exception:
+                                threshold_rad = 0.0
+                        else:
+                            try:
+                                props = bpy.context.scene.Mesh_Analysis_Overlay_Properties
+                                threshold_rad = float(np.radians(props.non_planar_threshold))
+                            except Exception:
+                                threshold_rad = 0.0
+                    # Diagnostic split passes (sum overstates single-pass cost
+                    # by extra len() scans, but isolates each feature's share).
+                    with _profB("analyze.faces.count"):
+                        for f in bm.faces:
+                            try:
+                                nv = len(f.verts)
+                            except Exception:
+                                continue
+                            idx = f.index
+                            if want_tri and nv == 3:
+                                buffers["tri_faces"].append(idx)
+                            if want_quad and nv == 4:
+                                buffers["quad_faces"].append(idx)
+                            if want_ngon and nv > 4:
+                                buffers["ngon_faces"].append(idx)
+                    if want_nonplanar:
+                        with _profB("analyze.faces.nonplanar"):
+                            for f in bm.faces:
+                                try:
+                                    if not self._is_planar_fast(f, threshold_rad):
+                                        buffers["non_planar_faces"].append(f.index)
+                                except Exception:
+                                    pass
                     if want_degen:
-                        try:
-                            if self._is_degenerate(f):
-                                buffers["degenerate_faces"].append(idx)
-                        except Exception:
-                            pass
+                        with _profB("analyze.faces.degenerate"):
+                            for f in bm.faces:
+                                try:
+                                    if self._is_degenerate(f):
+                                        buffers["degenerate_faces"].append(f.index)
+                                except Exception:
+                                    pass
 
             for feature in features:
                 buf = buffers.get(feature, [])

@@ -10,7 +10,7 @@ from .utils import (
     get_updated_bmesh_from_depsgraph,
     free_bmesh_if_owned,
     collect_enabled_features,
-    prof,
+    prof_scope,
 )
 
 # Kept for unregister cleanup / external compat; freshness is now driven by
@@ -97,7 +97,7 @@ def _push_gpu_results(obj, enabled_features, gpu_results) -> bool:
 
 @persistent
 def update_analysis_overlay(scene, depsgraph):
-    with prof("handlers.depsgraph"):
+    with prof_scope("depsgraph"):
         return _update_analysis_overlay_inner(scene, depsgraph)
 
 def _update_analysis_overlay_inner(scene, depsgraph):
@@ -220,7 +220,7 @@ def _update_analysis_overlay_inner(scene, depsgraph):
 
 
 def update_overlay_enabled_toggles(self, context):
-    with prof("handlers.toggle"):
+    with prof_scope("toggle"):
         return _update_overlay_enabled_toggles_inner(self, context)
 
 def _update_overlay_enabled_toggles_inner(self, context):

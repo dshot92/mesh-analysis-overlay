@@ -12,7 +12,11 @@ from .utils import (
     get_updated_bmesh_from_depsgraph,
     free_bmesh_if_owned,
     collect_enabled_features,
+    note_overlay_start,
+    note_overlay_stop,
     prof,
+    prof_event,
+    prof_scope,
 )
 
 
@@ -54,6 +58,10 @@ class OverlayController:
         self.analysis_engine.clear_all_cache()
         self.render_pipeline.start()
         _clear_panel_stats_cache()
+        try:
+            note_overlay_start()
+        except Exception:
+            pass
         self.update_all_selected()
 
     def stop(self):
@@ -61,12 +69,16 @@ class OverlayController:
             return
 
         self.is_running = False
+        try:
+            note_overlay_stop()
+        except Exception:
+            pass
         self.render_pipeline.stop()
         self.displayed_objects.clear()
         _clear_panel_stats_cache()
 
     def update_all_selected(self):
-        with prof("ctrl.update_all"):
+        with prof_scope("update_all"):
             return self._update_all_selected_inner()
 
     def _update_all_selected_inner(self):
@@ -81,6 +93,27 @@ class OverlayController:
             return
         current_names = {obj.name for obj in selected_meshes}
         to_remove = self.displayed_objects - current_names
+        try:
+            added = current_names - self.displayed_objects
+            if added or to_remove:
+                prof_event(
+                    "selection changed: +"
+                    + ",".join(sorted(added) if added else ["-"])
+                    + " -"
+                    + ",".join(sorted(to_remove) if to_remove else ["-"])
+                )
+            try:
+                modes = []
+                for o in selected_meshes:
+                    try:
+                        modes.append(f"{o.name}[{o.mode}]")
+                    except Exception:
+                        pass
+                prof_event(f"selected(n={len(modes)}): {', '.join(sorted(modes)) if modes else '(none)'}")
+            except Exception:
+                pass
+        except Exception:
+            pass
         for name in to_remove:
             self.render_pipeline.clear_object_data(name)
             # Drop stale analysis cache for deselected objects to bound memory.
@@ -134,7 +167,7 @@ class OverlayController:
         return True
 
     def update_overlay(self, obj: Object):
-        with prof("ctrl.update_overlay"):
+        with prof_scope("overlay"):
             return self._update_overlay_inner(obj)
 
     def _update_overlay_inner(self, obj: Object):

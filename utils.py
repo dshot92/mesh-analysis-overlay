@@ -15,11 +15,16 @@ _prof_totals: Dict[str, float] = {}
 _prof_counts: Dict[str, int] = {}
 _profile_manual: object = None
 _profile_autoprint: bool = False
+_scope_stack: list = []
+_overlay_start_wall: str = ""
+_overlay_start_mono: float = 0.0
+_prof_last_features: str = ""
 _AUTOPRINT_LABELS = frozenset({
     "ctrl.update_overlay", "ctrl.update_all",
     "handlers.depsgraph", "handlers.toggle",
     "analyze.mesh", "analyze.format", "analyze.batch",
 })
+_AUTOPRINT_PREFIXES = ("analyze.", "format.", "feature.", "ctrl.", "handlers.", "snap.", "cache.", "render.")
 
 def _timestamp() -> str:
     try:
@@ -28,6 +33,80 @@ def _timestamp() -> str:
         return time.strftime("%H:%M:%S", time.localtime(t)) + f".{ms:03d}"
     except Exception:
         return "--:--:--"
+
+def note_overlay_start():
+    """Stamp overlay start (wall + monotonic). Prints when auto-print is on."""
+    global _overlay_start_wall, _overlay_start_mono
+    try:
+        _overlay_start_wall = _timestamp()
+        _overlay_start_mono = time.perf_counter()
+        if _profile_enabled() and _profile_autoprint:
+            print(f"[{_overlay_start_wall}] [Profile] overlay started")
+    except Exception:
+        pass
+
+def note_overlay_stop():
+    global _overlay_start_wall, _overlay_start_mono
+    try:
+        _overlay_start_wall = ""
+        _overlay_start_mono = 0.0
+    except Exception:
+        pass
+
+def prof_event(msg: str) -> None:
+    """One-off event line. Folds into the open scope, else prints directly."""
+    try:
+        if not (_profile_enabled() and _profile_autoprint):
+            return
+        with _prof_lock:
+            if _scope_stack:
+                if len(_scope_stack[-1]["notes"]) < 10:
+                    _scope_stack[-1]["notes"].append(str(msg)[:200])
+                return
+        print(f"[{_timestamp()}] [Profile] {msg}")
+    except Exception:
+        pass
+
+def prof_features(features, obj_name=None, mode=None, counts=None) -> None:
+    """Log object + mode + size + which toggles are on for this analysis."""
+    global _prof_last_features
+    try:
+        names = sorted(str(f) for f in (features or []))
+    except Exception:
+        names = []
+    try:
+        obj = str(obj_name) if obj_name else "?"
+        m = str(mode) if mode else "?"
+        size = ""
+        try:
+            if counts is not None:
+                size = f" V={counts[0]} E={counts[1]} F={counts[2]}"
+        except Exception:
+            pass
+        _prof_last_features = f"{obj}[{m}]{size}: " + (", ".join(names) if names else "(none)")
+        if not (_profile_enabled() and _profile_autoprint):
+            return
+        with _prof_lock:
+            scoped = bool(_scope_stack)
+            if scoped:
+                _scope_stack[-1]["detail"] = f"{obj}[{m}]{size} n={len(names)}"[:200]
+                if len(_scope_stack[-1]["notes"]) < 10:
+                    _scope_stack[-1]["notes"].append(
+                        f"features: {', '.join(names) if names else '(none)'}")
+                return
+        print(f"[{_timestamp()}] [Profile] {obj}[{m}]{size} features(n={len(names)}): {', '.join(names) if names else '(none)'}")
+    except Exception:
+        pass
+
+def _should_autoprint(label: str) -> bool:
+    try:
+        if not _profile_autoprint:
+            return False
+        if label in _AUTOPRINT_LABELS:
+            return True
+        return str(label).startswith(_AUTOPRINT_PREFIXES)
+    except Exception:
+        return False
 
 def set_profile_autoprint(enabled: bool):
     global _profile_autoprint
@@ -73,20 +152,181 @@ def prof(label: str):
                 _prof_totals[label] = _prof_totals.get(label, 0.0) + dt
                 _prof_counts[label] = _prof_counts.get(label, 0) + 1
                 n = _prof_counts.get(label, 0)
-            try:
-                if _profile_autoprint and label in _AUTOPRINT_LABELS:
-                    print(f"[{_timestamp()}] [Profile] {label}: {dt*1000.0:.1f}ms (n={n})")
-            except Exception:
-                pass
+                scoped = bool(_scope_stack)
+                if scoped and len(_scope_stack[-1]["rows"]) < 1000:
+                    _scope_stack[-1]["rows"].append((label, dt * 1000.0))
+            if not scoped:
+                try:
+                    if _should_autoprint(label):
+                        print(f"[{_timestamp()}] [Profile] {label}: {dt*1000.0:.1f}ms (n={n})")
+                except Exception:
+                    pass
         except Exception:
             pass
+
+
+def _render_tree_lines(rows):
+    """Aggregate rows into indented tree lines via label-prefix nesting.
+
+    A label nested under the longest other recorded label it extends with
+    ".". Returns list of (depth, short_label, ms, n). Never raises.
+    """
+    try:
+        totals = {}
+        counts = {}
+        order = []
+        for k, v in rows:
+            try:
+                ms = float(v)
+            except Exception:
+                continue
+            if k not in totals:
+                totals[k] = 0.0
+                counts[k] = 0
+                order.append(k)
+            totals[k] += ms
+            counts[k] += 1
+    except Exception:
+        return []
+    try:
+        def _parent(k):
+            best = None
+            for c in totals:
+                if c != k and k.startswith(c + ".") and (best is None or len(c) > len(best)):
+                    best = c
+            if best is None and k.startswith("format.") and len(k.split(".")) == 2 \
+                    and "analyze.format" in totals:
+                best = "analyze.format"
+            return best
+        kids = {k: [] for k in totals}
+        roots = []
+        for k in order:
+            par = _parent(k)
+            if par is None:
+                roots.append(k)
+            else:
+                kids[par].append(k)
+        roots.sort(key=lambda k: -totals[k])
+        for k in kids:
+            kids[k].sort(key=lambda k: -totals[k])
+        lines = []
+        def _walk(key, depth, prefix_last):
+            kids_here = [c for c in kids.get(key, []) if totals[c] >= 1.0]
+            shown = key.split(".")[-1] if depth else key
+            tag = f" (n={counts[key]})" if counts[key] > 1 else ""
+            lines.append((depth, prefix_last, f"{shown}{tag}", totals[key]))
+            for i, c in enumerate(kids_here):
+                _walk(c, depth + 1, i == len(kids_here) - 1)
+        for k in roots:
+            if totals[k] >= 1.0:
+                _walk(k, 0, True)
+        return lines
+    except Exception:
+        return []
+
+
+def _format_tree_lines(tree):
+    """Render tree tuples into aligned strings."""
+    out = []
+    for depth, last, name, ms in tree:
+        if depth == 0:
+            left = f"  {name}"
+        else:
+            branch = "`- " if last else "|- "
+            left = f"  {'|  ' * (depth - 1)}{branch}{name}"
+        out.append(f"{left:<46} {ms:8.1f}ms")
+    return out
+
+
+def _print_scope_tree(scope, label: str, dt: float) -> None:
+    """Pre/post timer block: BEGIN line, tree, notes, END line."""
+    det = f" {scope['detail']}" if scope.get("detail") else ""
+    print(f"[{scope.get('wall0', _timestamp())}] [Profile] {label}{det} BEGIN")
+    try:
+        tree = _render_tree_lines(scope.get("rows", []))
+    except Exception:
+        tree = []
+    for line in _format_tree_lines(tree):
+        print(line)
+    try:
+        for n in (scope.get("notes") or [])[:4]:
+            print(f"  .. {str(n)[:180]}")
+    except Exception:
+        pass
+    print(f"[{_timestamp()}] [Profile] {label} END total={dt:.1f}ms")
+
+
+@contextmanager
+def prof_scope(label: str, min_ms: float = 5.0):
+    """One console line per event: nested prof rows collapse into a summary.
+
+    Nested scopes merge into the outermost. Prints only when wall time
+    reaches min_ms (silences no-op ticks). Never raises.
+    """
+    if not _profile_enabled():
+        yield None
+        return
+    scope = {"label": label, "detail": "", "rows": [], "notes": [],
+             "t0": time.perf_counter(), "wall0": _timestamp(),
+             "min_ms": float(min_ms)}
+    with _prof_lock:
+        _scope_stack.append(scope)
+    try:
+        yield scope
+    finally:
+        try:
+            dt = (time.perf_counter() - scope["t0"]) * 1000.0
+            with _prof_lock:
+                try:
+                    if _scope_stack and _scope_stack[-1] is scope:
+                        _scope_stack.pop()
+                    else:
+                        _scope_stack.remove(scope)
+                except Exception:
+                    pass
+                parent = _scope_stack[-1] if _scope_stack else None
+            if parent is not None:
+                try:
+                    parent["rows"].extend(scope["rows"])
+                    parent["notes"].extend(scope["notes"][-3:])
+                    if scope["detail"]:
+                        parent["detail"] = ((parent["detail"] + " " + scope["detail"]).strip())[:200]
+                except Exception:
+                    pass
+            elif dt >= scope["min_ms"]:
+                try:
+                    _print_scope_tree(scope, label, dt)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+
+def prof_scope_detail(text: str) -> None:
+    try:
+        text = str(text)[:200]
+        with _prof_lock:
+            if _scope_stack:
+                cur = _scope_stack[-1]["detail"]
+                _scope_stack[-1]["detail"] = ((cur + " " + text).strip())[:200]
+    except Exception:
+        pass
 
 def prof_report(reset: bool = False) -> str:
     try:
         with _prof_lock:
             items = [(k, _prof_counts.get(k, 0), _prof_totals.get(k, 0.0)) for k in _prof_totals]
         items.sort(key=lambda x: -x[2])
-        lines = [f"[MeshAnalysisProfile] {_timestamp()}"]
+        started = _overlay_start_wall or "n/a"
+        try:
+            age = f" (+{time.perf_counter() - _overlay_start_mono:.1f}s)" if _overlay_start_mono else ""
+        except Exception:
+            age = ""
+        lines = [
+            f"[MeshAnalysisProfile] {_timestamp()}",
+            f"  overlay started: {started}{age}",
+            f"  last features: {_prof_last_features or 'n/a'}",
+        ]
         for k, c, t in items:
             avg = (t / c * 1000.0) if c else 0.0
             lines.append(f"  {k}: total={t*1000.0:.1f}ms n={c} avg={avg:.2f}ms")

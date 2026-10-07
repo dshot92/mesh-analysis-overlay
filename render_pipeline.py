@@ -225,6 +225,12 @@ class RenderPipeline:
 
     def _update_batches(self):
         """Rebuild merged GPU batches (one per object per primitive type)."""
+        from .utils import prof as _profR
+        with _profR("render.batches"):
+            return self._update_batches_inner()
+
+    def _update_batches_inner(self):
+        """Inner (timed by wrapper)."""
         if not self._dirty_objects:
             return
 
@@ -236,11 +242,13 @@ class RenderPipeline:
         except Exception:
             offset_val = 0.0
 
+        summaries = []
         for obj_name in list(self._dirty_objects):
             obj_features = self.render_data.get(obj_name)
             if not obj_features:
                 if obj_name in self.gpu_batches:
                     del self.gpu_batches[obj_name]
+                summaries.append(f"{obj_name}[cleared]")
                 continue
 
             # Group by primitive type.
@@ -292,7 +300,24 @@ class RenderPipeline:
                 except Exception:
                     # Keep previous batch on failure to avoid flicker.
                     continue
+            try:
+                parts = []
+                for _pt, _ds in grouped.items():
+                    try:
+                        _nv = sum(len(_d.vertices) for _d in _ds)
+                    except Exception:
+                        _nv = 0
+                    parts.append(f"{_pt.name}:{_nv}v/{len(_ds)}f")
+                summaries.append(f"{obj_name}[" + "+".join(parts) + "]")
+            except Exception:
+                pass
 
+        try:
+            from .utils import prof_event as _bev
+            if summaries:
+                _bev("batches rebuilt: " + ", ".join(summaries))
+        except Exception:
+            pass
         self._dirty_objects.clear()
 
     def _is_xray_enabled(self) -> bool:
